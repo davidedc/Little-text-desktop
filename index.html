@@ -1,0 +1,696 @@
+<html>
+<head>
+    <title>ASCII Desktop system</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+          }
+          #grid-container {
+            background-color: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 20px;
+          }
+          #characters-grid {
+            white-space: pre;
+            line-height: 1;
+            font-size: 14px;
+            cursor: default;
+            user-select: none;
+            /* other variants of user-select: none */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+          }
+          button {
+            margin: 0 5px;
+            padding: 5px 10px;
+          }
+          .resize-handle {
+            color: red;
+          }
+    </style>
+</head>
+
+<body>
+    <div id="grid-container">
+        <div id="characters-grid">
+        </div>
+    </div>
+
+    <script>
+      // Base TWidget class
+      class TWidget {
+        constructor(x, y, w, h, title) {
+          this.x = x;
+          this.y = y;
+          this.w = w;
+          this.h = h;
+          this.title = title;
+        }
+
+        destroy () {
+          // remove the widget from the tWidgets array
+          const index = tWidgets.indexOf(this);
+          if (index > -1) {
+            tWidgets.splice(index, 1);
+          }
+        }
+
+        scroll(delta) {
+          // base class has no scroll
+        }
+
+        click(x, y) {
+          // base class has no click
+        }
+
+        draw_bottomBorder(charactersGridHTMLContent_Array) {
+          for (let i = this.x; i < this.x + this.w; i++) {
+            setChar(charactersGridHTMLContent_Array, i, this.y + this.h - 1, '-');
+          }
+        }
+
+        draw_topBorder(charactersGridHTMLContent_Array) {
+          for (let i = this.x; i < this.x + this.w; i++) {
+            setChar(charactersGridHTMLContent_Array, i, this.y, '-');
+          }
+        }
+
+        draw_leftBorder(charactersGridHTMLContent_Array) {
+          for (let i = this.y; i < this.y + this.h; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x, i, '|');
+          }
+        }
+
+        draw_rightBorder(charactersGridHTMLContent_Array) {
+          for (let i = this.y + 1; i < this.y + this.h - 1; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x + this.w - 1, i, '|');
+          }
+        }
+
+        draw_corners(charactersGridHTMLContent_Array) {
+          setChar(charactersGridHTMLContent_Array, this.x, this.y, '+');
+          setChar(charactersGridHTMLContent_Array, this.x + this.w - 1, this.y, '+');
+          setChar(charactersGridHTMLContent_Array, this.x, this.y + this.h - 1, '+');
+          setChar(charactersGridHTMLContent_Array, this.x + this.w - 1, this.y + this.h - 1, '+');
+        }
+
+        draw_title(charactersGridHTMLContent_Array) {
+          for (let i = 0; i < this.title.length && i < this.w - 2; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x + 1 + i, this.y, this.title[i]);
+          }
+        }
+
+        draw_resizerHandle(charactersGridHTMLContent_Array) {
+          setChar(charactersGridHTMLContent_Array, this.x + this.w - 1, this.y + this.h - 1, '◢');
+        }
+
+        draw_content(charactersGridHTMLContent_Array) {
+          // base class has no content
+        }
+
+        draw(charactersGridHTMLContent_Array, isTopTWidget = false) {
+          this.draw_topBorder(charactersGridHTMLContent_Array);
+          this.draw_bottomBorder(charactersGridHTMLContent_Array);
+
+          this.draw_leftBorder(charactersGridHTMLContent_Array);
+          this.draw_rightBorder(charactersGridHTMLContent_Array);
+
+          this.draw_corners(charactersGridHTMLContent_Array);
+
+          this.draw_resizerHandle(charactersGridHTMLContent_Array);
+
+          this.draw_title(charactersGridHTMLContent_Array);
+
+          this.draw_content(charactersGridHTMLContent_Array);
+          
+          this.draw_shadow(charactersGridHTMLContent_Array, isTopTWidget);
+        }
+
+        draw_shadow(charactersGridHTMLContent_Array, isTopTWidget) {
+          // Draw shadow under the bottom border
+          for (let i = this.x + 1; i < this.x + this.w + 1; i++) {
+            setChar(charactersGridHTMLContent_Array, i, this.y + this.h, isTopTWidget ? MEDIUM_SHADE : LIGHT_SHADE);
+          }
+
+          // Draw shadow to the right of the right border
+          for (let i = this.y + 1; i < this.y + this.h; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x + this.w, i, isTopTWidget ? MEDIUM_SHADE : LIGHT_SHADE);
+          }
+        }
+      }
+
+      // TClockWidget class
+      class TClockWidget extends TWidget {
+        constructor(x, y, w, h) {
+          super(x, y, w, h, "Clock");
+          this.hours = 0;
+          this.minutes = 0;
+          this.seconds = 0;
+        }
+
+        update() {
+          const now = new Date();
+          this.hours = now.getHours() % 12;
+          this.minutes = now.getMinutes();
+          this.seconds = now.getSeconds();
+        }
+
+        clearContents(charactersGridHTMLContent_Array) {
+          for (let i = this.x + 1; i < this.x + this.w - 1; i++) {
+            for (let j = this.y + 1; j < this.y + this.h - 1; j++) {
+              setChar(charactersGridHTMLContent_Array, i, j, ' ');
+            }
+          }
+        }
+
+        draw_content(charactersGridHTMLContent_Array) {
+          this.clearContents(charactersGridHTMLContent_Array);
+          
+          const centerX = this.x + Math.floor(this.w / 2);
+          const centerY = this.y + Math.floor(this.h / 2);
+          const clockFaceNumbersRadius = Math.min(Math.floor(this.w / 2), Math.floor(this.h / 2)) - 2;
+
+          // Draw clock face numbers
+          if (this.w >= 10 && this.h >= 6) {
+            for (let i = 1; i <= 12; i++) {
+              const angle = (i * 30 - 90) * Math.PI / 180;
+              const numberX = Math.round(centerX + clockFaceNumbersRadius * Math.cos(angle) * Y_TO_X_CHARS_DIMENSIONS_RATIO);
+              const numberY = Math.round(centerY + clockFaceNumbersRadius * Math.sin(angle));
+              
+              if (i <= 9) {
+                setChar(charactersGridHTMLContent_Array, numberX, numberY, i.toString());
+              } else {
+                setChar(charactersGridHTMLContent_Array, numberX - 1, numberY, '1');
+                setChar(charactersGridHTMLContent_Array, numberX, numberY, (i - 10).toString());
+              }
+            }
+          }
+
+          // Draw clock hands
+          const handsRadius = clockFaceNumbersRadius + 1;
+          this.drawClockHand(charactersGridHTMLContent_Array, centerX, centerY, this.seconds * 6, handsRadius * 0.8, 'S');
+          this.drawClockHand(charactersGridHTMLContent_Array, centerX, centerY, this.minutes * 6, handsRadius * 0.7, 'M');
+          this.drawClockHand(charactersGridHTMLContent_Array, centerX, centerY, this.hours * 30 + this.minutes / 2, handsRadius * 0.5, 'H');
+        }
+
+
+        drawClockHand(charactersGridHTMLContent_Array, centerX, centerY, angle, length, char) {
+          const radians = (angle - 90) * Math.PI / 180;
+          const targetX = Math.round(centerX + length * Math.cos(radians) * Y_TO_X_CHARS_DIMENSIONS_RATIO);
+          const targetY = Math.round(centerY + length * Math.sin(radians));
+          drawLine(charactersGridHTMLContent_Array, centerX, centerY, targetX, targetY, char);
+        }
+      }
+
+      // TTextViewWidget class
+      class TTextViewWidget extends TWidget {
+        constructor(x, y, w, h, title, content) {
+          super(x, y, w, h, title);
+          this.content = content;
+          this.scrollOffset = 0;
+        }
+
+        draw_content(charactersGridHTMLContent_Array) {
+          const lines = wrapText(this.content, this.w - 2 - SCROLL_BAR_WIDTH_chars);
+          const visibleLines = this.h - 2;
+          let lastWrittenLine = 0;
+
+          for (let i = 0; i < visibleLines && i + this.scrollOffset < lines.length; i++) {
+            for (let j = 0; j < lines[i + this.scrollOffset].length; j++) {
+              setChar(charactersGridHTMLContent_Array, this.x + 1 + j, this.y + 1 + i, lines[i + this.scrollOffset][j]);
+            }
+            // Fill the rest of the line with spaces
+            for (let j = lines[i + this.scrollOffset].length; j < this.w - 2; j++) {
+              setChar(charactersGridHTMLContent_Array, this.x + 1 + j, this.y + 1 + i, ' ');
+            }
+            lastWrittenLine = this.y + 1 + i;
+          }
+
+          // Fill the rest of the lines up to the bottom of the text area with spaces
+          for (let i = lastWrittenLine + 1; i < this.y + this.h - 1; i++) {
+            for (let j = 0; j < this.w - 2; j++) {
+              setChar(charactersGridHTMLContent_Array, this.x + 1 + j, i, ' ');
+            }
+          }
+
+          this.drawScrollbar(charactersGridHTMLContent_Array, lines.length, visibleLines);
+        }
+
+        drawScrollbar(charactersGridHTMLContent_Array, totalLines, visibleLines) {
+          const scrollbarHeight = this.h - 2;
+          const thumbPosition = Math.floor(scrollbarHeight * this.scrollOffset / totalLines);
+          let thumbSize = Math.max(1, Math.floor(scrollbarHeight * visibleLines / totalLines));
+          thumbSize = Math.min(thumbSize, scrollbarHeight - thumbPosition);
+
+          for (let i = 0; i < scrollbarHeight; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x + this.w - 2, this.y + 1 + i, '|');
+          }
+          for (let i = 0; i < thumbSize; i++) {
+            setChar(charactersGridHTMLContent_Array, this.x + this.w - 2, this.y + 1 + thumbPosition + i, '#');
+          }
+        }
+
+        scroll(delta) {
+          const lines = wrapText(this.content, this.w - 2 - SCROLL_BAR_WIDTH_chars);
+          const visibleLines = this.h - 2;
+          const maxScroll = Math.max(0, lines.length - visibleLines);
+
+          if (!(this.scrollOffset >= maxScroll && delta > 0)) {
+            this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset + Math.sign(delta)));
+          }
+        }
+      }
+
+      // TStatusWidget class
+      class TStatusWidget extends TTextViewWidget {
+        constructor(x, y, w, h) {
+          super(x, y, w, h, "Status", "");
+          this.isStatusTWidget = true;
+        }
+
+        draw_bottomBorder(charactersGridHTMLContent_Array) {
+          // do nothing
+        }
+
+        draw_shadow(charactersGridHTMLContent_Array, isTopTWidget) {
+          // do nothing
+        }
+
+        draw_content(charactersGridHTMLContent_Array) {
+          // Draw content
+          const lines = wrapText(this.content, this.w - 2);
+          for (let i = 0; i < lines.length && i < this.h - 1; i++) {
+            for (let j = 0; j < lines[i].length; j++) {
+              setChar(charactersGridHTMLContent_Array, this.x + 1 + j, this.y + 1 + i, lines[i][j]);
+            }
+          }
+        }
+
+      }
+
+      class TMenuWidget extends TWidget {
+        constructor(x, y, w, h, title, menuItems, pinned = true) {
+          super(x, y, w, h, title);
+          this.menuItems = menuItems;
+          this.selectedIndex = 0;
+          this.subMenu = null;
+          this.pinned = pinned;
+        }
+
+
+        selectNext() {
+          this.selectedIndex = (this.selectedIndex + 1) % this.menuItems.length;
+        }
+
+        selectPrevious() {
+          this.selectedIndex = (this.selectedIndex - 1 + this.menuItems.length) % this.menuItems.length;
+        }
+
+        activate() {
+          if (this.menuItems[this.selectedIndex]) {
+            const item = this.menuItems[this.selectedIndex];
+            if (item.subMenu) {
+              this.subMenu = new TMenuWidget(this.x + this.w, this.y + this.selectedIndex + 1, this.w, item.subMenu.length + 2, item.label, item.subMenu, false);
+              tWidgets.push(this.subMenu);
+            } else if (item.callback) {
+              item.callback();
+              if (!this.pinned) {
+                this.destroy();
+              }
+            }
+          }
+        }
+
+        click(x, y) {
+          // find out which menu item is at coordinates x, y
+          const itemIndex = y - this.y - 1;
+          if (itemIndex >= 0 && itemIndex < this.menuItems.length) {
+            this.selectedIndex = itemIndex;
+            this.activate();
+          }
+        }
+
+
+        draw(charactersGridHTMLContent_Array) {
+          super.draw(charactersGridHTMLContent_Array);
+          
+          for (let i = 0; i < this.menuItems.length; i++) {
+            const item = this.menuItems[i];
+            const isSelected = i === this.selectedIndex;
+            const itemString = isSelected ? `> ${item.label}` : `  ${item.label}`;
+            for (let j = 0; j < itemString.length && j < this.w - 2; j++) {
+              setChar(charactersGridHTMLContent_Array, this.x + 1 + j, this.y + 1 + i, itemString[j]);
+            }
+          }
+        }
+      }
+
+
+      // Helper functions
+      function setChar(charactersGridHTMLContent_Array, x, y, char) {
+        if (x >= 0 && x < GRID_WIDTH_chars && y >= 0 && y < GRID_HEIGHT_chars) {
+          charactersGridHTMLContent_Array[y][x] = char;
+        }
+      }
+
+      function wrapText(text, maxWidth) {
+        if (!text) return [];
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
+
+        words.forEach(word => {
+          if (currentLine.length + word.length + 1 <= maxWidth) {
+            currentLine += (currentLine.length ? ' ' : '') + word;
+          } else {
+            lines.push(currentLine);
+            currentLine = word;
+          }
+        });
+        
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+
+        return lines;
+      }
+
+      function drawLine(charactersGridHTMLContent_Array, x1, y1, x2, y2, char) {
+        const dx = Math.abs(x2 - x1);
+        const dy = Math.abs(y2 - y1);
+        const sx = x1 < x2 ? 1 : -1;
+        const sy = y1 < y2 ? 1 : -1;
+        let err = dx - dy;
+
+        while (true) {
+          setChar(charactersGridHTMLContent_Array, x1, y1, char);
+          if (x1 === x2 && y1 === y2) break;
+          const e2 = 2 * err;
+          if (e2 > -dy) {
+            err -= dy;
+            x1 += sx;
+          }
+          if (e2 < dx) {
+            err += dx;
+            y1 += sy;
+          }
+        }
+      }
+
+      // Main application logic
+      let tWidgets = [];
+      let tWidgBeingMovedOrResized = null;
+      let dragStartX, dragStartY;
+      let mouseIsPressed = false;
+      let isDragging = false;
+      let isResizing = false;
+      let isMaybeDragging = false;
+      let isMaybeResizing = false;
+
+      function getRandomCoordinates(windowWidth, windowHeight) {
+        const x = Math.floor(Math.random() * (GRID_WIDTH_chars - windowWidth));
+        const y = Math.floor(Math.random() * (GRID_HEIGHT_chars - windowHeight));
+        return { x, y };
+      }
+
+      function createRandomTWidget() {
+        tWidgetCounter++;
+        if (tWidgetCounter % 3 === 0) {
+          createClock();
+        } else {
+          const { x, y } = getRandomCoordinates(DEFAULT_WINDOW_WIDTH_chars, DEFAULT_WINDOW_HEIGHT_chars);
+          const w = DEFAULT_WINDOW_WIDTH_chars;
+          const h = DEFAULT_WINDOW_HEIGHT_chars;
+          const title = `Widget ${tWidgets.length + 1}`;
+          const content = loremIpsum;
+          tWidgets.push(new TTextViewWidget(x, y, w, h, title, content));
+        }
+        drawTWidgets();
+      }
+
+      function createClock() {
+        const { x, y } = getRandomCoordinates(CLOCK_WIDTH_chars, CLOCK_HEIGHT_chars);
+        const clock = new TClockWidget(x, y, CLOCK_WIDTH_chars, CLOCK_HEIGHT_chars);
+        tWidgets.push(clock);
+        updateClocks();
+        setInterval(updateClocks, CLOCK_UPDATE_INTERVAL_ms);
+      }
+
+      function updateClocks() {
+        tWidgets.filter(widget => widget instanceof TClockWidget).forEach(clock => clock.update());
+        drawTWidgets();
+      }
+
+      function createStatusTWidget() {
+        const statusWidget = new TStatusWidget(0, GRID_HEIGHT_chars - STATUS_WINDOW_HEIGHT_chars, GRID_WIDTH_chars, STATUS_WINDOW_HEIGHT_chars);
+        tWidgets.push(statusWidget);
+      }
+
+      function showStatusMessage(message) {
+        const statusWidget = tWidgets.find(widget => widget instanceof TStatusWidget);
+        if (statusWidget) {
+          statusWidget.content = message;
+          drawTWidgets();
+        }
+      }
+
+      function hideStatusMessage() {
+        showStatusMessage("");
+      }
+
+      function drawTWidgets() {
+        let charactersGridHTMLContent_Array = Array(GRID_HEIGHT_chars).fill().map(() => Array(GRID_WIDTH_chars).fill(' '));
+        tWidgets.forEach((tWdg, index) => {
+          tWdg.draw(charactersGridHTMLContent_Array, index === tWidgets.length - 1);
+        });
+        emitHTML(charactersGridHTMLContent_Array);
+      }
+
+      function findActiveWidget(mouseX_chars, mouseY_chars) {
+        for (let i = tWidgets.length - 1; i >= 0; i--) {
+            const tWdg = tWidgets[i];
+            if (mouseX_chars >= tWdg.x && mouseX_chars <= tWdg.x + tWdg.w &&
+                mouseY_chars >= tWdg.y && mouseY_chars <= tWdg.y + tWdg.h) {
+                return { tWdg, index: i };
+            }
+        }
+        return null;
+      }
+
+      // Event handlers
+      function handleMouseDown(e) {
+        const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+        const result = findActiveWidget(mouseX_chars, mouseY_chars);
+        
+        if (result) {
+            const { tWdg, index } = result;
+            tWidgBeingMovedOrResized = tWdg;
+            tWidgets.splice(index, 1);
+            tWidgets.push(tWidgBeingMovedOrResized);
+            
+            mouseIsPressed = true;
+            if (mouseX_chars >= tWdg.x + tWdg.w - 2 && mouseY_chars >= tWdg.y + tWdg.h - 2) {
+                isMaybeDragging = false;
+                isMaybeResizing = true;
+            } else {
+                dragStartX = mouseX_chars - tWdg.x;
+                dragStartY = mouseY_chars - tWdg.y;
+                isMaybeDragging = true;
+                isMaybeResizing = false;
+            }
+            
+            drawTWidgets();
+        }
+      }
+
+      function handleMouseMove(e) {
+        if (!tWidgBeingMovedOrResized) return;
+        
+        const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+        let somethingChanged = false;
+        
+        if (mouseIsPressed) {
+
+          if ((isMaybeResizing || isResizing) && ( - tWidgBeingMovedOrResized.x + 1 !== tWidgBeingMovedOrResized.w || mouseY_chars - tWidgBeingMovedOrResized.y + 1 !== tWidgBeingMovedOrResized.h)) {
+            if(isMaybeResizing) {
+              showStatusMessage(tWidgBeingMovedOrResized instanceof TClockWidget ? "Resizing clock" : "Resizing tWidget");
+            }
+            isDragging = false;
+            isResizing = true;
+            isMaybeResizing = false;
+            somethingChanged = true;
+            const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, Math.min(mouseX_chars - tWidgBeingMovedOrResized.x + 1, GRID_WIDTH_chars - tWidgBeingMovedOrResized.x));
+            const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, Math.min(mouseY_chars - tWidgBeingMovedOrResized.y + 1, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.y));
+            tWidgBeingMovedOrResized.w = newWidth;
+            tWidgBeingMovedOrResized.h = newHeight;
+          }
+          else if ((isMaybeDragging || isDragging) && (mouseX_chars - dragStartX !== tWidgBeingMovedOrResized.x || mouseY_chars - dragStartY !== tWidgBeingMovedOrResized.y)) {
+            if(isMaybeDragging) {
+              showStatusMessage(tWidgBeingMovedOrResized instanceof TClockWidget ? "Dragging clock" : "Dragging tWidget");
+            }
+            isDragging = true;
+            isResizing = false;
+            isMaybeDragging = false;
+            somethingChanged = true;
+            tWidgBeingMovedOrResized.x = Math.max(0, Math.min(mouseX_chars - dragStartX, GRID_WIDTH_chars - tWidgBeingMovedOrResized.w));
+            tWidgBeingMovedOrResized.y = Math.max(0, Math.min(mouseY_chars - dragStartY, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.h));
+          }
+
+          if (somethingChanged) {
+            drawTWidgets();
+          }
+        }
+      }
+
+      function handleMouseUp(e) {
+        mouseIsPressed = false;
+
+        tWidgBeingMovedOrResized = null;
+        hideStatusMessage();
+
+        if (!isDragging && !isResizing){
+          const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+          const result = findActiveWidget(mouseX_chars, mouseY_chars);
+          
+          if (result) {
+                result.tWdg.click(mouseX_chars, mouseY_chars);
+                drawTWidgets();
+          }
+        }
+
+        isDragging = false;
+        isResizing = false;
+        isMaybeDragging = false;
+        isMaybeResizing = false;
+
+      }
+
+      function handleWheel(e) {
+        e.preventDefault();
+
+        const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+        const result = findActiveWidget(mouseX_chars, mouseY_chars);
+        
+        if (result) {
+              result.tWdg.scroll(Math.sign(e.deltaY));
+              drawTWidgets();
+        }
+      }
+
+
+      function getMouseCoords_chars(e) {
+        const charactersGridElementRect = charactersGridElement.getBoundingClientRect();
+        //console.log("getMouseCoords_chars - charactersGridElementRect", charactersGridElementRect);
+        const mouseX_pixels = e.clientX - charactersGridElementRect.left;
+        const mouseY_pixels = e.clientY - charactersGridElementRect.top;
+        //console.log("getMouseCoords_chars - mouseX_pixels", mouseX_pixels);
+        //console.log("getMouseCoords_chars - mouseY_pixels", mouseY_pixels);
+
+        const mouseX_chars = Math.floor(mouseX_pixels / charWidth);
+        const mouseY_chars = Math.floor(mouseY_pixels / charHeight);
+
+        return { mouseX_chars, mouseY_chars };
+      }
+
+      function emitHTML(charactersGridHTMLContent_Array) {
+        charactersGridElement.innerHTML = charactersGridHTMLContent_Array.map(row => row.map(
+          cell => cell === '◢' ? '<span class="resize-handle">&#9698;</span>' : cell
+        ).join('')).join('\n');
+      }
+
+      // Constants
+      const Y_TO_X_CHARS_DIMENSIONS_RATIO = 1.5;
+      const GRID_WIDTH_chars = 100;
+      const GRID_HEIGHT_chars = 50;
+      const DEFAULT_WINDOW_WIDTH_chars = 30;
+      const DEFAULT_WINDOW_HEIGHT_chars = 15;
+      const CLOCK_HEIGHT_chars = 22;
+      const CLOCK_WIDTH_chars = Math.round(CLOCK_HEIGHT_chars * Y_TO_X_CHARS_DIMENSIONS_RATIO);
+      const MIN_WINDOW_WIDTH_chars = 10;
+      const MIN_WINDOW_HEIGHT_chars = 6;
+      const STATUS_WINDOW_HEIGHT_chars = 3;
+      const LIGHT_SHADE = '&#9617;';
+      const MEDIUM_SHADE = '&#9618;';
+      const SCROLL_BAR_WIDTH_chars = 1;
+      const CLOCK_UPDATE_INTERVAL_ms = 1000;
+
+      // Sample text content
+      const loremIpsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+
+      // Initialization
+      let tWidgetCounter = 0;
+      let charWidth;
+      let charHeight;
+      let menuWidget;
+
+      const charactersGridElement = document.getElementById('characters-grid');
+
+      function createTextWidget() {
+        const { x, y } = getRandomCoordinates(DEFAULT_WINDOW_WIDTH_chars, DEFAULT_WINDOW_HEIGHT_chars);
+        const w = DEFAULT_WINDOW_WIDTH_chars;
+        const h = DEFAULT_WINDOW_HEIGHT_chars;
+        const title = `Widget ${tWidgets.length + 1}`;
+        const content = loremIpsum;
+        tWidgets.push(new TTextViewWidget(x, y, w, h, title, content));
+        drawTWidgets();
+      }
+
+      // Modify the createTWidget function to use the menu
+      function createTWidget() {
+        drawTWidgets();
+      }
+
+      function initializeSystem() {
+        // fill charactersGridElement with empty spaces
+        const charactersGridHTMLContent_Array = Array(GRID_HEIGHT_chars).fill().map(() => Array(GRID_WIDTH_chars).fill(' '));
+        emitHTML(charactersGridHTMLContent_Array);
+
+        charWidth = charactersGridElement.getBoundingClientRect().width / GRID_WIDTH_chars;
+        charHeight = charactersGridElement.getBoundingClientRect().height / GRID_HEIGHT_chars;
+        //console.log("initializeSystem: charWidth", charWidth);
+        //console.log("initializeSystem: charHeight", charHeight);
+
+        createStatusTWidget();
+
+        // Create the menu widget
+        const menuItems = [
+          {
+            label: "Create...",
+            subMenu: [
+              { label: "Clock", callback: createClock },
+              { label: "Text pane", callback: () => createTextWidget() }
+            ]
+          },
+          {
+            label: "Random widget",
+            callback: () => createRandomTWidget()
+          }
+        ];
+        menuWidget = new TMenuWidget(0, 0, 20, menuItems.length + 2, "Menu", menuItems);
+        tWidgets.push(menuWidget);
+
+        drawTWidgets();
+
+        charactersGridElement.addEventListener('mousedown', handleMouseDown);
+        charactersGridElement.addEventListener('mousemove', handleMouseMove);
+        charactersGridElement.addEventListener('mouseup', handleMouseUp);
+        charactersGridElement.addEventListener('wheel', handleWheel, { passive: false });
+      }
+
+      // Initialize the system when the window loads
+      window.onload = initializeSystem;
+      //console.log("charactersGridElement", charactersGridElement);
+      //console.log("charWidth", charWidth);
+      //console.log("charHeight", charHeight);
+
+</script>
+</body>
+</html>
