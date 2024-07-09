@@ -488,6 +488,7 @@
 
       // Event handlers
       function handleMouseDown(e) {
+        e.preventDefault();
         const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
         const result = findActiveWidget(mouseX_chars, mouseY_chars);
         
