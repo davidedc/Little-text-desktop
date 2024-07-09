@@ -383,24 +383,37 @@
         return lines;
       }
 
-      function drawLine(charactersGridHTMLContent_Array, x1, y1, x2, y2, char) {
+
+      // Not quite Bresenham's line algorithm but it's good enough for our purposes
+      // and it's simpler.
+      function drawLine_new(charactersGridHTMLContent_Array, x1, y1, x2, y2, char) {
+        // Calculate differences and steps
         const dx = Math.abs(x2 - x1);
         const dy = Math.abs(y2 - y1);
         const sx = x1 < x2 ? 1 : -1;
         const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
+        
+        // Determine whether to prioritize movement along x or y axis
+        const isStepX = dx > dy;
 
+        // Set initial position
+        let x = x1;
+        let y = y1;
+
+        // Draw the line
         while (true) {
-          setChar(charactersGridHTMLContent_Array, x1, y1, char);
-          if (x1 === x2 && y1 === y2) break;
-          const e2 = 2 * err;
-          if (e2 > -dy) {
-            err -= dy;
-            x1 += sx;
-          }
-          if (e2 < dx) {
-            err += dx;
-            y1 += sy;
+          setChar(charactersGridHTMLContent_Array, Math.round(x), Math.round(y), char);
+          
+          // Check if we've reached the end point
+          if (Math.round(x) === x2 && Math.round(y) === y2) break;
+
+          // Move to next position
+          if (isStepX) {
+            x += sx;
+            y += sy * dy / dx;
+          } else {
+            y += sy;
+            x += sx * dx / dy;
           }
         }
       }
