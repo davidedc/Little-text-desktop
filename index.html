@@ -470,6 +470,7 @@
       }
 
       function drawTWidgets() {
+        // TODO surely you can at least re-use the rows here?
         let charactersGridHTMLContent_Array = Array(GRID_HEIGHT_chars).fill().map(() => Array(GRID_WIDTH_chars).fill(' '));
         tWidgets.forEach((tWdg, index) => {
           tWdg.draw(charactersGridHTMLContent_Array, index === tWidgets.length - 1);
