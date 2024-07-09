@@ -59,6 +59,14 @@
           // base class has no click
         }
 
+        clearContents(charactersGridHTMLContent_Array) {
+          for (let i = this.x + 1; i < this.x + this.w - 1; i++) {
+            for (let j = this.y + 1; j < this.y + this.h - 1; j++) {
+              setChar(charactersGridHTMLContent_Array, i, j, ' ');
+            }
+          }
+        }
+
         draw_bottomBorder(charactersGridHTMLContent_Array) {
           for (let i = this.x; i < this.x + this.w; i++) {
             setChar(charactersGridHTMLContent_Array, i, this.y + this.h - 1, '-');
@@ -117,6 +125,7 @@
 
           this.draw_title(charactersGridHTMLContent_Array);
 
+          this.clearContents(charactersGridHTMLContent_Array);
           this.draw_content(charactersGridHTMLContent_Array);
           
           this.draw_shadow(charactersGridHTMLContent_Array, isTopTWidget);
@@ -151,17 +160,7 @@
           this.seconds = now.getSeconds();
         }
 
-        clearContents(charactersGridHTMLContent_Array) {
-          for (let i = this.x + 1; i < this.x + this.w - 1; i++) {
-            for (let j = this.y + 1; j < this.y + this.h - 1; j++) {
-              setChar(charactersGridHTMLContent_Array, i, j, ' ');
-            }
-          }
-        }
-
         draw_content(charactersGridHTMLContent_Array) {
-          this.clearContents(charactersGridHTMLContent_Array);
-          
           const centerX = this.x + Math.floor(this.w / 2);
           const centerY = this.y + Math.floor(this.h / 2);
           const clockFaceNumbersRadius = Math.min(Math.floor(this.w / 2), Math.floor(this.h / 2)) - 2;
@@ -204,6 +203,11 @@
           super(x, y, w, h, title);
           this.content = content;
           this.scrollOffset = 0;
+        }
+
+        clearContents(charactersGridHTMLContent_Array) {
+          // do nothing because we'll do it in draw_content
+          // a bit more efficiently.
         }
 
         draw_content(charactersGridHTMLContent_Array) {
