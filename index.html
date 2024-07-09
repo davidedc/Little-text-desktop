@@ -593,8 +593,8 @@
         const { clientX, clientY } = e;
         const { left, top } = charactersGridElementRect;
         return {
-          mouseX_chars: Math.floor((clientX - left) / charWidth),
-          mouseY_chars: Math.floor((clientY - top) / charHeight)
+          mouseX_chars: Math.floor((clientX - left) / charWidth_px),
+          mouseY_chars: Math.floor((clientY - top) / charHeight_px)
         };
       }
 
@@ -622,27 +622,21 @@
       const loremIpsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
       // Initialization
-      let charWidth;
-      let charHeight;
       let menuWidget;
 
-      // calculate the width and height of a character
-      const testElement = document.createElement('div');
-      testElement.style.display = 'inline-block';
-      testElement.style.fontSize = '14px';
-      testElement.style.lineHeight = '1';
-      testElement.style.fontFamily = 'monospace';
-      // set zero margin and padding
-      testElement.style.margin = '0';
-      testElement.style.padding = '0';
-      testElement.style.visibility = 'hidden';
-      // set text content to a long string of 40 Xs so that we can then amortise any errors in the measurement
-      testElement.textContent = 'X'.repeat(40);
-      document.body.appendChild(testElement);
-      charWidth = testElement.offsetWidth/40;
-      charHeight = testElement.offsetHeight;
-      document.body.removeChild(testElement);
+      function getMonospaceFontDimensions(fontSize) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${fontSize}px monospace`;
+        
+        const metrics = context.measureText('X');
+        const charWidth_px = metrics.width;
+        const charHeight_px = fontSize;
 
+        return { charWidth_px, charHeight_px };
+      }
+
+      const { charWidth_px, charHeight_px } = getMonospaceFontDimensions(14);
 
       const charactersGridElement = document.getElementById('characters-grid');
 
@@ -698,8 +692,8 @@
         const gridBoundingBox = characterGrid.getBoundingClientRect();
         
         // Calculate new grid dimensions
-        const newWidth = Math.floor(gridBoundingBox.width / charWidth);
-        const newHeight = Math.floor(gridBoundingBox.height / charHeight);
+        const newWidth = Math.floor(gridBoundingBox.width / charWidth_px);
+        const newHeight = Math.floor(gridBoundingBox.height / charHeight_px);
         
         // If dimensions have changed, update the grid
         if (newWidth !== GRID_WIDTH_chars || newHeight !== GRID_HEIGHT_chars) {
@@ -728,8 +722,8 @@
       // Initialize the system when the window loads
       window.onload = initializeSystem;
       //console.log("charactersGridElement", charactersGridElement);
-      //console.log("charWidth", charWidth);
-      //console.log("charHeight", charHeight);
+      //console.log("charWidth_px", charWidth_px);
+      //console.log("charHeight_px", charHeight_px);
 
 </script>
 </body>
