@@ -2,47 +2,35 @@
 <head>
     <title>ASCII Desktop system</title>
     <style>
-        body {
-            font-family: monospace;
-            background-color: #f0f0f0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-          }
-          #grid-container {
-            background-color: white;
-            border: 1px solid #ccc;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            padding: 20px;
-          }
-          #characters-grid {
-            white-space: pre;
-            line-height: 1;
-            font-size: 14px;
-            cursor: default;
-            user-select: none;
-            /* other variants of user-select: none */
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-          }
-          button {
-            margin: 0 5px;
-            padding: 5px 10px;
-          }
-          .resize-handle {
-            color: red;
-          }
-    </style>
+      body, html {
+          margin: 0;
+          padding: 0;
+          height: 100%;
+          overflow: hidden;
+      }
+      #characters-grid {
+          width: 100%;
+          height: 100%;
+          background-color: white;
+          overflow: hidden;
+          font-family: monospace;
+          white-space: pre;
+          line-height: 1;
+          font-size: 14px;
+          cursor: default;
+          user-select: none;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+      }
+      .resize-handle {
+          color: red;
+      }
+  </style>
 </head>
 
 <body>
-    <div id="grid-container">
-        <div id="characters-grid">
-        </div>
-    </div>
+    <div id="characters-grid"></div>
 
     <script>
       // Base TWidget class
@@ -525,45 +513,42 @@
       }
 
       function handleMouseMove(e) {
-        if (!tWidgBeingMovedOrResized) return;
+        e.preventDefault();
+        // for now we only handle dragging and resizing so return
+        // if the mouse is not pressed or there is no widget being moved or resized
+        if (!mouseIsPressed || !tWidgBeingMovedOrResized) return;
         
         const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
         let somethingChanged = false;
-        
-        if (mouseIsPressed) {
 
-          if ((isMaybeResizing || isResizing) && ( - tWidgBeingMovedOrResized.x + 1 !== tWidgBeingMovedOrResized.w || mouseY_chars - tWidgBeingMovedOrResized.y + 1 !== tWidgBeingMovedOrResized.h)) {
-            if(isMaybeResizing) {
-              showStatusMessage(tWidgBeingMovedOrResized instanceof TClockWidget ? "Resizing clock" : "Resizing tWidget");
-            }
-            isDragging = false;
-            isResizing = true;
-            isMaybeResizing = false;
-            somethingChanged = true;
-            const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, Math.min(mouseX_chars - tWidgBeingMovedOrResized.x + 1, GRID_WIDTH_chars - tWidgBeingMovedOrResized.x));
-            const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, Math.min(mouseY_chars - tWidgBeingMovedOrResized.y + 1, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.y));
-            tWidgBeingMovedOrResized.w = newWidth;
-            tWidgBeingMovedOrResized.h = newHeight;
-          }
-          else if ((isMaybeDragging || isDragging) && (mouseX_chars - dragStartX !== tWidgBeingMovedOrResized.x || mouseY_chars - dragStartY !== tWidgBeingMovedOrResized.y)) {
-            if(isMaybeDragging) {
-              showStatusMessage(tWidgBeingMovedOrResized instanceof TClockWidget ? "Dragging clock" : "Dragging tWidget");
-            }
-            isDragging = true;
-            isResizing = false;
-            isMaybeDragging = false;
-            somethingChanged = true;
-            tWidgBeingMovedOrResized.x = Math.max(0, Math.min(mouseX_chars - dragStartX, GRID_WIDTH_chars - tWidgBeingMovedOrResized.w));
-            tWidgBeingMovedOrResized.y = Math.max(0, Math.min(mouseY_chars - dragStartY, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.h));
-          }
+        if ((isMaybeResizing || isResizing) && ( - tWidgBeingMovedOrResized.x + 1 !== tWidgBeingMovedOrResized.w || mouseY_chars - tWidgBeingMovedOrResized.y + 1 !== tWidgBeingMovedOrResized.h)) {
+          if(isMaybeResizing) showStatusMessage("Resizing " + tWidgBeingMovedOrResized.title);
+          isDragging = false;
+          isResizing = true;
+          isMaybeResizing = false;
+          somethingChanged = true;
+          const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, Math.min(mouseX_chars - tWidgBeingMovedOrResized.x + 1, GRID_WIDTH_chars - tWidgBeingMovedOrResized.x));
+          const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, Math.min(mouseY_chars - tWidgBeingMovedOrResized.y + 1, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.y));
+          tWidgBeingMovedOrResized.w = newWidth;
+          tWidgBeingMovedOrResized.h = newHeight;
+        }
+        else if ((isMaybeDragging || isDragging) && (mouseX_chars - dragStartX !== tWidgBeingMovedOrResized.x || mouseY_chars - dragStartY !== tWidgBeingMovedOrResized.y)) {
+          if(isMaybeDragging) showStatusMessage("Dragging " + tWidgBeingMovedOrResized.title);
+          isDragging = true;
+          isResizing = false;
+          isMaybeDragging = false;
+          somethingChanged = true;
+          tWidgBeingMovedOrResized.x = Math.max(0, Math.min(mouseX_chars - dragStartX, GRID_WIDTH_chars - tWidgBeingMovedOrResized.w));
+          tWidgBeingMovedOrResized.y = Math.max(0, Math.min(mouseY_chars - dragStartY, GRID_HEIGHT_chars - tWidgBeingMovedOrResized.h));
+        }
 
-          if (somethingChanged) {
-            drawTWidgets();
-          }
+        if (somethingChanged) {
+          drawTWidgets();
         }
       }
 
       function handleMouseUp(e) {
+        e.preventDefault();
         mouseIsPressed = false;
 
         tWidgBeingMovedOrResized = null;
@@ -599,8 +584,9 @@
       }
 
 
+      let charactersGridElementRect;
+
       function getMouseCoords_chars(e) {
-        const charactersGridElementRect = charactersGridElement.getBoundingClientRect();
         //console.log("getMouseCoords_chars - charactersGridElementRect", charactersGridElementRect);
         const mouseX_pixels = e.clientX - charactersGridElementRect.left;
         const mouseY_pixels = e.clientY - charactersGridElementRect.top;
@@ -621,8 +607,6 @@
 
       // Constants
       const Y_TO_X_CHARS_DIMENSIONS_RATIO = 1.5;
-      const GRID_WIDTH_chars = 100;
-      const GRID_HEIGHT_chars = 50;
       const DEFAULT_WINDOW_WIDTH_chars = 30;
       const DEFAULT_WINDOW_HEIGHT_chars = 15;
       const CLOCK_HEIGHT_chars = 22;
@@ -644,6 +628,24 @@
       let charHeight;
       let menuWidget;
 
+      // calculate the width and height of a character
+      const testElement = document.createElement('div');
+      testElement.style.display = 'inline-block';
+      testElement.style.fontSize = '14px';
+      testElement.style.lineHeight = '1';
+      testElement.style.fontFamily = 'monospace';
+      // set zero margin and padding
+      testElement.style.margin = '0';
+      testElement.style.padding = '0';
+      testElement.style.visibility = 'hidden';
+      // set text content to a long string of 40 Xs so that we can then amortise any errors in the measurement
+      testElement.textContent = 'X'.repeat(40);
+      document.body.appendChild(testElement);
+      charWidth = testElement.offsetWidth/40;
+      charHeight = testElement.offsetHeight;
+      document.body.removeChild(testElement);
+
+
       const charactersGridElement = document.getElementById('characters-grid');
 
       function createTextWidget() {
@@ -656,21 +658,15 @@
         drawTWidgets();
       }
 
-      // Modify the createTWidget function to use the menu
-      function createTWidget() {
-        drawTWidgets();
-      }
+      let GRID_WIDTH_chars;
+      let GRID_HEIGHT_chars;
+      let charactersGridHTMLContent_Array;
 
       function initializeSystem() {
-        // fill charactersGridElement with empty spaces
-        const charactersGridHTMLContent_Array = Array(GRID_HEIGHT_chars).fill().map(() => Array(GRID_WIDTH_chars).fill(' '));
-        emitHTML(charactersGridHTMLContent_Array);
-
-        charWidth = charactersGridElement.getBoundingClientRect().width / GRID_WIDTH_chars;
-        charHeight = charactersGridElement.getBoundingClientRect().height / GRID_HEIGHT_chars;
-        //console.log("initializeSystem: charWidth", charWidth);
-        //console.log("initializeSystem: charHeight", charHeight);
-
+        // assuming we don't move the charactersGridElement and that there
+        // no scrollbars popping in and out
+        charactersGridElementRect = charactersGridElement.getBoundingClientRect();
+        updateGridDimensions();
         createStatusTWidget();
 
         // Create the menu widget
@@ -696,8 +692,41 @@
         charactersGridElement.addEventListener('mousemove', handleMouseMove);
         charactersGridElement.addEventListener('mouseup', handleMouseUp);
         charactersGridElement.addEventListener('wheel', handleWheel, { passive: false });
+        window.addEventListener('resize', handleResize);
       }
 
+      function updateGridDimensions() {
+        const characterGrid = document.getElementById('characters-grid');
+        const gridBoundingBox = characterGrid.getBoundingClientRect();
+        
+        // Calculate new grid dimensions
+        const newWidth = Math.floor(gridBoundingBox.width / charWidth);
+        const newHeight = Math.floor(gridBoundingBox.height / charHeight);
+        
+        // If dimensions have changed, update the grid
+        if (newWidth !== GRID_WIDTH_chars || newHeight !== GRID_HEIGHT_chars) {
+            const oldGrid = charactersGridHTMLContent_Array || [];
+            
+            GRID_WIDTH_chars = newWidth;
+            GRID_HEIGHT_chars = newHeight;
+            
+            charactersGridHTMLContent_Array = Array(GRID_HEIGHT_chars).fill().map(() => Array(GRID_WIDTH_chars).fill(' '));
+            
+            // Copy over the old content
+            for (let y = 0; y < Math.min(oldGrid.length, GRID_HEIGHT_chars); y++) {
+                for (let x = 0; x < Math.min(oldGrid[y].length, GRID_WIDTH_chars); x++) {
+                    charactersGridHTMLContent_Array[y][x] = oldGrid[y][x];
+                }
+            }
+            
+            emitHTML(charactersGridHTMLContent_Array);
+        }
+      }
+
+      function handleResize() {
+          updateGridDimensions();
+          drawTWidgets();
+      }      
       // Initialize the system when the window loads
       window.onload = initializeSystem;
       //console.log("charactersGridElement", charactersGridElement);
