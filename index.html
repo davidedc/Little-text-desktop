@@ -374,7 +374,7 @@
 
       // Not quite Bresenham's line algorithm but it's good enough for our purposes
       // and it's simpler.
-      function drawLine_new(charactersGridHTMLContent_Array, x1, y1, x2, y2, char) {
+      function drawLine(charactersGridHTMLContent_Array, x1, y1, x2, y2, char) {
         // Calculate differences and steps
         const dx = Math.abs(x2 - x1);
         const dy = Math.abs(y2 - y1);
