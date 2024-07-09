@@ -587,16 +587,12 @@
       let charactersGridElementRect;
 
       function getMouseCoords_chars(e) {
-        //console.log("getMouseCoords_chars - charactersGridElementRect", charactersGridElementRect);
-        const mouseX_pixels = e.clientX - charactersGridElementRect.left;
-        const mouseY_pixels = e.clientY - charactersGridElementRect.top;
-        //console.log("getMouseCoords_chars - mouseX_pixels", mouseX_pixels);
-        //console.log("getMouseCoords_chars - mouseY_pixels", mouseY_pixels);
-
-        const mouseX_chars = Math.floor(mouseX_pixels / charWidth);
-        const mouseY_chars = Math.floor(mouseY_pixels / charHeight);
-
-        return { mouseX_chars, mouseY_chars };
+        const { clientX, clientY } = e;
+        const { left, top } = charactersGridElementRect;
+        return {
+          mouseX_chars: Math.floor((clientX - left) / charWidth),
+          mouseY_chars: Math.floor((clientY - top) / charHeight)
+        };
       }
 
       function emitHTML(charactersGridHTMLContent_Array) {
