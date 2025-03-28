@@ -31,17 +31,6 @@ const loremIpsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " +
 // --- Main application logic
 let tWidgets = [];
 let activeWidget = null;
-let widgetBeingMovedOrResized = null;
-let dragOffsetX, dragOffsetY;
-let mouseIsPressed = false;
-let isDragging = false;
-let isResizing = false;
-let isDraggingScrollbar = false;
-let scrollbarDragWidget = null;
-let scrollbarDragAxis = null;
-let scrollbarDragStartY = 0;
-let scrollbarDragStartX = 0;
-let scrollbarDragStartOffset = 0;
 let statusWidget = null;
 let GRID_WIDTH_chars, GRID_HEIGHT_chars;
 let charWidth_px, charHeight_px;
@@ -268,16 +257,14 @@ function handleMouseDown(e) {
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     const result = findWidgetAt(mouseX_chars, mouseY_chars);
     
-    // Reset mouse state
-    mouseIsPressed = true;
-    isDragging = false;
-    isResizing = false;
-    isDraggingScrollbar = false;
-    widgetBeingMovedOrResized = result ? result.widget : null;
-    scrollbarDragWidget = null;
+    // Reset interaction state
+    interactionState.reset();
 
     if (result) {
         const { widget } = result;
+        
+        // Start with assumption this is a simple click
+        interactionState.startClick(widget, mouseX_chars, mouseY_chars);
         
         // Bring widget to front if not already active
         if (widget !== activeWidget) {
@@ -301,12 +288,8 @@ function handleMouseDown(e) {
             innerY >= vScrollInfo.thumbPosition && 
             innerY < vScrollInfo.thumbPosition + vScrollInfo.thumbSize) {
             
-            isDraggingScrollbar = true;
-            scrollbarDragWidget = widget;
-            scrollbarDragAxis = 'vertical';
-            scrollbarDragStartY = mouseY_chars;
-            scrollbarDragStartOffset = (widget instanceof TEditorWidget) ? widget.editorWindow.row : widget.scrollOffset;
-            widgetBeingMovedOrResized = null;
+            const startOffset = (widget instanceof TEditorWidget) ? widget.editorWindow.row : widget.scrollOffset;
+            interactionState.startScrollDrag(widget, 'vertical', mouseX_chars, mouseY_chars, startOffset);
             showStatusMessage(`Scrolling ${widget.title}...`);
             return;
         }
@@ -319,12 +302,8 @@ function handleMouseDown(e) {
             innerX >= hScrollInfo.thumbPosition && 
             innerX < hScrollInfo.thumbPosition + hScrollInfo.thumbSize) {
             
-            isDraggingScrollbar = true;
-            scrollbarDragWidget = widget;
-            scrollbarDragAxis = 'horizontal';
-            scrollbarDragStartX = mouseX_chars;
-            scrollbarDragStartOffset = (widget instanceof TEditorWidget) ? widget.editorWindow.col : 0;
-            widgetBeingMovedOrResized = null;
+            const startOffset = (widget instanceof TEditorWidget) ? widget.editorWindow.col : 0;
+            interactionState.startScrollDrag(widget, 'horizontal', mouseX_chars, mouseY_chars, startOffset);
             showStatusMessage(`Scrolling ${widget.title}...`);
             return;
         }
@@ -341,32 +320,26 @@ function handleMouseDown(e) {
         if (canClose && mouseX_chars === closeX && isTitleY && widget.w >= 4) {
             widget.destroy();
             setActiveWidget(null);
-            widgetBeingMovedOrResized = null;
             drawTWidgets();
             return;
         }
         // Handle resize handle click
         else if (mouseX_chars === resizeX && mouseY_chars === resizeY) {
-            isResizing = true;
+            interactionState.startResize(widget, mouseX_chars, mouseY_chars);
             showStatusMessage("Resizing " + widget.title);
         }
         // Handle title bar drag
         else if (isTitleY && mouseX_chars > widget.x && mouseX_chars < closeX) {
-            isDragging = true;
-            dragOffsetX = mouseX_chars - widget.x;
-            dragOffsetY = mouseY_chars - widget.y;
+            interactionState.startDrag(widget, mouseX_chars, mouseY_chars, mouseX_chars - widget.x, mouseY_chars - widget.y);
             showStatusMessage("Dragging " + widget.title);
         }
         // Handle content area drag for Clock and TextView
         else if (!(widget instanceof TEditorWidget) && !(widget instanceof TMenuWidget)) {
-            isDragging = true;
-            dragOffsetX = mouseX_chars - widget.x;
-            dragOffsetY = mouseY_chars - widget.y;
+            interactionState.startDrag(widget, mouseX_chars, mouseY_chars, mouseX_chars - widget.x, mouseY_chars - widget.y);
             showStatusMessage("Dragging " + widget.title);
         }
     } else {
         // Clicked on background
-        widgetBeingMovedOrResized = null;
         if (activeWidget instanceof TMenuWidget && !activeWidget.pinned) {
             activeWidget.closeAll();
             drawTWidgets();
@@ -375,80 +348,76 @@ function handleMouseDown(e) {
 }
 
 function handleMouseMove(e) {
+    // No action if no active interaction
+    if (!interactionState.isActive()) return;
+    
+    const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+    let needsRedraw = false;
+
     // Handle scrollbar dragging
-    if (isDraggingScrollbar && scrollbarDragWidget) {
-        const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
-        let needsRedraw = false;
+    if (interactionState.isScrolling()) {
+        const widget = interactionState.targetWidget;
         let scrollInfo = null;
         let mouseDelta = 0;
         let newScrollOffset = 0;
 
-        if (scrollbarDragAxis === 'vertical') {
-            scrollInfo = scrollbarDragWidget.getVerticalScrollbarInfo();
+        if (interactionState.axis === 'vertical') {
+            scrollInfo = widget.getVerticalScrollbarInfo();
             if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset > 0) {
-                mouseDelta = mouseY_chars - scrollbarDragStartY;
+                mouseDelta = mouseY_chars - interactionState.startY;
                 const offsetPerChar = scrollInfo.maxScrollOffset / Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
-                newScrollOffset = scrollbarDragStartOffset + (mouseDelta * offsetPerChar);
-                needsRedraw = scrollbarDragWidget.updateScrollOffset('vertical', newScrollOffset);
+                newScrollOffset = interactionState.startOffset + (mouseDelta * offsetPerChar);
+                needsRedraw = widget.updateScrollOffset('vertical', newScrollOffset);
             }
-        } else if (scrollbarDragAxis === 'horizontal') {
-            scrollInfo = scrollbarDragWidget.getHorizontalScrollbarInfo();
+        } else if (interactionState.axis === 'horizontal') {
+            scrollInfo = widget.getHorizontalScrollbarInfo();
             if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset > 0) {
-                mouseDelta = mouseX_chars - scrollbarDragStartX;
+                mouseDelta = mouseX_chars - interactionState.startX;
                 const offsetPerChar = scrollInfo.maxScrollOffset / Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
-                newScrollOffset = scrollbarDragStartOffset + (mouseDelta * offsetPerChar);
-                needsRedraw = scrollbarDragWidget.updateScrollOffset('horizontal', newScrollOffset);
+                newScrollOffset = interactionState.startOffset + (mouseDelta * offsetPerChar);
+                needsRedraw = widget.updateScrollOffset('horizontal', newScrollOffset);
             }
         }
-
-        if (needsRedraw) {
-            drawTWidgets();
+    }
+    // Handle widget resizing
+    else if (interactionState.isResizing()) {
+        const widget = interactionState.targetWidget;
+        
+        // Calculate new dimensions while respecting minimums
+        const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, mouseX_chars - widget.x + 1);
+        const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, mouseY_chars - widget.y + 1);
+        
+        // Clamp dimensions to grid boundaries
+        const clampedWidth = Math.min(newWidth, GRID_WIDTH_chars - widget.x);
+        const clampedHeight = Math.min(newHeight, GRID_HEIGHT_chars - widget.y);
+        
+        if (widget.w !== clampedWidth || widget.h !== clampedHeight) {
+            widget.updateDimensions(clampedWidth, clampedHeight);
+            needsRedraw = true;
         }
-        return;
+    }
+    // Handle widget dragging
+    else if (interactionState.isDragging()) {
+        const widget = interactionState.targetWidget;
+        
+        // Calculate new position using drag offsets
+        const newPosX = mouseX_chars - interactionState.offsetX;
+        const newPosY = mouseY_chars - interactionState.offsetY;
+        
+        // Clamp position to keep widget in bounds
+        const maxPosY = GRID_HEIGHT_chars - widget.h - STATUS_WINDOW_HEIGHT_chars;
+        const clampedPosX = clamp(newPosX, 0, GRID_WIDTH_chars - widget.w);
+        const clampedPosY = clamp(newPosY, 0, maxPosY);
+        
+        if (widget.x !== clampedPosX || widget.y !== clampedPosY) {
+            widget.x = clampedPosX;
+            widget.y = clampedPosY;
+            needsRedraw = true;
+        }
     }
 
-    // Handle widget dragging and resizing
-    if (mouseIsPressed && (widgetBeingMovedOrResized || isDragging || isResizing)) {
-        const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
-        
-        if (!widgetBeingMovedOrResized || (!isDragging && !isResizing)) return;
-        
-        let needsRedraw = false;
-        const widget = widgetBeingMovedOrResized;
-
-        if (isResizing) {
-            // Calculate new dimensions while respecting minimums
-            const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, mouseX_chars - widget.x + 1);
-            const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, mouseY_chars - widget.y + 1);
-            
-            // Clamp dimensions to grid boundaries
-            const clampedWidth = Math.min(newWidth, GRID_WIDTH_chars - widget.x);
-            const clampedHeight = Math.min(newHeight, GRID_HEIGHT_chars - widget.y);
-            
-            if (widget.w !== clampedWidth || widget.h !== clampedHeight) {
-                widget.updateDimensions(clampedWidth, clampedHeight);
-                needsRedraw = true;
-            }
-        } else if (isDragging) {
-            // Calculate new position
-            const newPosX = mouseX_chars - dragOffsetX;
-            const newPosY = mouseY_chars - dragOffsetY;
-            
-            // Clamp position to keep widget in bounds
-            const maxPosY = GRID_HEIGHT_chars - widget.h - STATUS_WINDOW_HEIGHT_chars;
-            const clampedPosX = clamp(newPosX, 0, GRID_WIDTH_chars - widget.w);
-            const clampedPosY = clamp(newPosY, 0, maxPosY);
-            
-            if (widget.x !== clampedPosX || widget.y !== clampedPosY) {
-                widget.x = clampedPosX;
-                widget.y = clampedPosY;
-                needsRedraw = true;
-            }
-        }
-
-        if (needsRedraw) {
-            drawTWidgets();
-        }
+    if (needsRedraw) {
+        drawTWidgets();
     }
 }
 
@@ -456,38 +425,29 @@ function handleMouseMove(e) {
  * Handles mouse up events, including scrollbar dragging, widget clicking, and cleanup
  */
 function handleMouseUp(e) {
-    // Handle end of scrollbar dragging
-    if (isDraggingScrollbar) {
-        isDraggingScrollbar = false;
-        scrollbarDragWidget = null;
-        scrollbarDragAxis = null;
-        hideStatusMessage();
-        mouseIsPressed = false;
-        return;
-    }
-
-    // Handle widget clicks when not dragging/resizing
-    if (mouseIsPressed) {
-        if (!isDragging && !isResizing && widgetBeingMovedOrResized) {
-            const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
-            const result = findWidgetAt(mouseX_chars, mouseY_chars);
-            if (result && result.widget === widgetBeingMovedOrResized && result.widget === activeWidget) {
-                result.widget.click(mouseX_chars, mouseY_chars);
-                drawTWidgets();
-            }
+    // If we're not in the middle of an interaction, nothing to do
+    if (!interactionState.isPressed) return;
+    
+    const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+    
+    // Handle simple clicks (when no other interaction was detected)
+    if (interactionState.isClicking() && interactionState.targetWidget) {
+        const result = findWidgetAt(mouseX_chars, mouseY_chars);
+        
+        // Only trigger click if mouse up is on the same widget as mouse down
+        if (result && result.widget === interactionState.targetWidget) {
+            result.widget.click(mouseX_chars, mouseY_chars);
+            drawTWidgets();
         }
     }
 
-    // Clean up status message if was dragging/resizing
-    if (isDragging || isResizing) {
+    // Hide status message if we were dragging or resizing
+    if (interactionState.isDragging() || interactionState.isResizing() || interactionState.isScrolling()) {
         hideStatusMessage();
     }
 
-    // Reset all mouse state
-    widgetBeingMovedOrResized = null;
-    mouseIsPressed = false;
-    isDragging = false;
-    isResizing = false;
+    // End the interaction
+    interactionState.endInteraction();
 }
 
 /**
