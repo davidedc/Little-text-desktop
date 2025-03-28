@@ -113,15 +113,19 @@ function drawLine(charGrid, startX, startY, endX, endY, lineChar) {
 }
 
 /**
- * Sets a character at a specific coordinate in the character grid.
+ * Sets a character or Cell at a specific coordinate in the character grid.
  * @param {Array} charGrid - The character grid
  * @param {number} posX - X coordinate
  * @param {number} posY - Y coordinate
- * @param {string} character - Character to set
+ * @param {string|Cell} content - Character or Cell to set
  */
-function setChar(charGrid, posX, posY, character) {
+function setChar(charGrid, posX, posY, content) {
     if (posX >= 0 && posX < GRID_WIDTH_chars && posY >= 0 && posY < GRID_HEIGHT_chars) {
-        if (typeof character !== 'string') character = ' ';
-        charGrid[posY][posX] = character;
+        // If we received a plain character, convert it to a Cell
+        if (!(content instanceof Cell)) {
+            if (typeof content !== 'string') content = ' ';
+            content = new Cell(content, false);
+        }
+        charGrid[posY][posX] = content;
     }
 }

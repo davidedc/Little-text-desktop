@@ -35,7 +35,6 @@ let statusWidget = null;
 let GRID_WIDTH_chars, GRID_HEIGHT_chars;
 let charWidth_px, charHeight_px;
 let clockUpdateInterval = null;
-let currentCursorPos = { x: -1, y: -1 };
 let menuWidget;
 let charactersGridElement;
 
@@ -145,26 +144,18 @@ function createRandomTWidget() {
 
 /** 
  * Redraws all widgets onto the character grid.
- * Clears the grid, draws each widget in order, and updates cursor position if needed.
+ * Clears the grid, draws each widget in order.
  */
 function drawTWidgets() {
-    // Reset cursor position
-    currentCursorPos = { x: -1, y: -1 };
-
-    // Create empty character grid
+    // Create empty character grid with Cell objects
     let characterGrid = Array(GRID_HEIGHT_chars)
         .fill(null)
-        .map(() => Array(GRID_WIDTH_chars).fill(' '));
+        .map(() => Array(GRID_WIDTH_chars).fill(null).map(() => new Cell(' ')));
 
     // Draw each widget
     tWidgets.forEach((widget, widgetIndex) => {
         const isTopWidget = (widget === activeWidget) || widgetIndex === tWidgets.length - 1;
         widget.draw(characterGrid, isTopWidget);
-
-        // Update cursor position if this is the active editor
-        if (widget === activeWidget && widget instanceof TEditorWidget) {
-            currentCursorPos = widget.cursorScreenPos;
-        }
     });
 
     emitHTML(characterGrid);
@@ -640,32 +631,14 @@ function getMouseCoords_chars(mouseEvent) {
 
 /** 
  * Renders the character grid array to HTML.
- * Handles special cases for cursor, close button, and resize handle rendering.
+ * Simply renders each cell's content, which may include HTML for styling.
  */
 function emitHTML(characterGrid) {
     let htmlOutput = '';
     for (let rowIndex = 0; rowIndex < GRID_HEIGHT_chars; rowIndex++) {
         for (let colIndex = 0; colIndex < GRID_WIDTH_chars; colIndex++) {
-            let character = characterGrid[rowIndex]?.[colIndex] || ' ';
-
-            // Handle cursor position in editor widgets
-            if (colIndex === currentCursorPos.x && rowIndex === currentCursorPos.y && activeWidget instanceof TEditorWidget) {
-                const displayChar = (character === ' ') ? ' ' : escapeHtml(character);
-                const blinkClass = activeWidget.isCursorBlinking ? ' cursor-blink' : '';
-                htmlOutput += `<span class="cursor${blinkClass}">${displayChar}</span>`;
-            }
-            // Handle close button 'X' character
-            else if (character === 'X' && rowIndex > 0 && colIndex > 0 && characterGrid[rowIndex]?.[colIndex+1] === '┐') {
-                htmlOutput += `<span class="close-button">X</span>`;
-            }
-            // Handle resize handle character
-            else if (character === '◢') {
-                htmlOutput += '<span class="resize-handle">◢</span>';
-            }
-            // Handle regular characters
-            else {
-                htmlOutput += escapeHtml(character);
-            }
+            const cell = characterGrid[rowIndex]?.[colIndex] || new Cell(' ');
+            htmlOutput += cell.toString();
         }
         htmlOutput += '\n';
     }

@@ -107,14 +107,14 @@ class TWidget {
     // Draw the close button ('X') if widget is wide enough
     draw_close_button(charGrid) {
         if (this.w >= 4) {
-            setChar(charGrid, this.x + this.w - 2, this.y, 'X');
+            setChar(charGrid, this.x + this.w - 2, this.y, Cell.closeButton());
         }
     }
 
     // Draw the resize handle ('◢') in bottom-right corner if widget has positive dimensions
     draw_resizerHandle(charGrid) {
         if (this.w > 0 && this.h > 0) {
-            setChar(charGrid, this.x + this.w - 1, this.y + this.h - 1, '◢');
+            setChar(charGrid, this.x + this.w - 1, this.y + this.h - 1, Cell.resizeHandle());
         }
     }
 

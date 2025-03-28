@@ -7,7 +7,6 @@ class TEditorWidget extends TWidget {
         const contentWidth = Math.max(1, this.w - 3);
         const contentHeight = Math.max(1, this.h - 3);
         this.editorWindow = new EditorWindow(contentHeight, contentWidth);
-        this.cursorScreenPos = { x: -1, y: -1 };
         this.isCursorBlinking = false; 
         this.cursorBlinkTimer = null;
     }
@@ -48,8 +47,8 @@ class TEditorWidget extends TWidget {
                 this.isCursorBlinking = true;
                 this.cursorBlinkTimer = null;
                 
-                // Only redraw if focused and cursor is visible
-                if (this.hasFocus && this.cursorScreenPos.x !== -1) {
+                // Only redraw if focused
+                if (this.hasFocus) {
                     drawTWidgets();
                 }
             }, CURSOR_BLINK_DELAY);
@@ -146,6 +145,9 @@ class TEditorWidget extends TWidget {
         win.n_rows = dims.contentHeight;
         win.n_cols = dims.contentWidth;
 
+        // Calculate cursor position for drawing at the beginning
+        const { rel_row: relRow, rel_col: relCol } = win.translate(this.cursor);
+
         // Draw editor content if there is space
         if (dims.contentWidth > 0 && dims.contentHeight > 0) {
             for (let rr = 0; rr < dims.contentHeight; rr++) {
@@ -164,7 +166,19 @@ class TEditorWidget extends TWidget {
                 for (let rc = 0; rc < dims.contentWidth; rc++) {
                     const sx = this.x + 1 + rc;
                     const ch = rc < l.length ? l[rc] : ' ';
-                    setChar(a, sx, sy, ch);
+                    
+                    // Check if this cell contains the cursor
+                    const isCursorCell = this.hasFocus && 
+                                       relRow === rr && 
+                                       relCol === rc;
+                    
+                    if (isCursorCell) {
+                        // Use a styled cursor cell
+                        setChar(a, sx, sy, Cell.cursor(ch, this.isCursorBlinking));
+                    } else {
+                        // Use a regular character
+                        setChar(a, sx, sy, ch);
+                    }
                 }
             }
         }
@@ -200,21 +214,6 @@ class TEditorWidget extends TWidget {
         // Draw scrollbar corner intersection if both scrollbars present
         if (dims.vScrollNeeded && dims.hScrollNeeded) {
             setChar(a, this.x + this.w - 2, this.y + this.h - 2, '+');
-        }
-
-        // Update cursor position based on window translation
-        const { rel_row: relRow, rel_col: relCol } = win.translate(this.cursor);
-        
-        // Only show cursor if in focus and within visible content area
-        if (this.hasFocus && 
-            relRow >= 0 && relRow < dims.contentHeight &&
-            relCol >= 0 && relCol < dims.contentWidth) {
-            this.cursorScreenPos = {
-                x: this.x + 1 + relCol,
-                y: this.y + 1 + relRow
-            };
-        } else {
-            this.cursorScreenPos = { x: -1, y: -1 };
         }
     }
 
