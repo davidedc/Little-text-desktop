@@ -9,7 +9,7 @@ body, html {
     height: 100%;
     background-color: white;
     overflow: hidden;
-    font-family: monospace;
+    font-family: "Courier New", "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace;
     white-space: pre;
     line-height: 1; /* Consistent line height */
     font-size: 14px;

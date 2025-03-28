@@ -575,7 +575,7 @@ function emitHTML(characterGrid) {
  */
 function measureMonospaceFontDimensions(fontSize) {
     const testSpan = document.createElement('span');
-    testSpan.style.fontFamily = 'monospace';
+    testSpan.style.fontFamily = '"Courier New", "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace';
     testSpan.style.fontSize = `${fontSize}px`;
     testSpan.style.position = 'absolute';
     testSpan.style.visibility = 'hidden';
