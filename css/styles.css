@@ -50,3 +50,30 @@ body, html {
     color: red;
     font-weight: bold;
 }
+
+/* Style for Selected Text */
+.selected {
+    background-color: #0066cc;
+    color: white;
+    min-width: 1ch;
+    box-sizing: border-box;
+}
+
+/* Style for Selected Text that is also the cursor */
+.selected.cursor {
+    background-color: #0099ff;
+    color: white;
+    outline: 1px dotted white;
+}
+
+/* Blinking for selected cursor */
+.selected.cursor.cursor-blink {
+    animation: selected-blink 1s step-start infinite;
+}
+
+@keyframes selected-blink {
+    50% {
+        background-color: #0066cc;
+        outline-color: transparent;
+    }
+}

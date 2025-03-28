@@ -14,7 +14,7 @@ class InteractionState {
      * Reset the interaction state to its default values
      */
     reset() {
-        this.type = 'none';       // Type of interaction: 'none', 'drag', 'resize', 'scroll', 'click'
+        this.type = 'none';       // Type of interaction: 'none', 'drag', 'resize', 'scroll', 'click', 'selecting'
         this.targetWidget = null; // Widget being interacted with
         this.startX = 0;          // Starting X coordinate (in character units)
         this.startY = 0;          // Starting Y coordinate (in character units)
@@ -23,6 +23,16 @@ class InteractionState {
         this.startOffset = 0;     // Starting scroll offset (for scrolling)
         this.axis = null;         // Scroll axis: 'vertical' or 'horizontal'
         this.isPressed = false;   // Whether mouse is currently pressed
+        this.debug = true;        // Enable debug logging
+    }
+    
+    /**
+     * Log debug information
+     */
+    log(...args) {
+        if (this.debug) {
+            console.log("[InteractionState]", ...args);
+        }
     }
     
     /**
@@ -130,11 +140,35 @@ class InteractionState {
     isScrolling() {
         return this.isPressed && this.type === 'scroll';
     }
+    
+    /**
+     * Start a text selection interaction
+     * @param {TWidget} widget - The widget where selection is happening
+     * @param {number} x - Mouse X coordinate in character units
+     * @param {number} y - Mouse Y coordinate in character units
+     */
+    startSelecting(widget, x, y) {
+        this.type = 'selecting';
+        this.targetWidget = widget;
+        this.startX = x;
+        this.startY = y;
+        this.isPressed = true;
+        this.log("Started selecting at", x, y);
+    }
+    
+    /**
+     * Check if a text selection interaction is in progress
+     * @returns {boolean} True if currently selecting text
+     */
+    isSelecting() {
+        return this.isPressed && this.type === 'selecting';
+    }
 
     /**
      * End the current interaction
      */
     endInteraction() {
+        this.log("Ending interaction:", this.type);
         this.isPressed = false;
     }
 }

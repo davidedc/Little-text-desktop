@@ -473,12 +473,66 @@ function handleBackgroundClick() {
  * Main mouse move handler - delegates to specific move handlers based on interaction type
  */
 function handleMouseMove(e) {
-    // No action if no active interaction
-    if (!interactionState.isActive()) return;
-    
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     let needsRedraw = false;
 
+    // Handle text selection (when mouse is pressed but interaction isn't active yet)
+    if (interactionState.isClicking() || interactionState.isSelecting()) {
+        const widget = interactionState.targetWidget;
+        
+        // Check if it's an editor widget that can handle selection
+        if (widget instanceof TEditorWidget) {
+            // If we're just clicking, switch to selecting mode
+            if (interactionState.isClicking()) {
+                interactionState.startSelecting(widget, interactionState.startX, interactionState.startY);
+            }
+            
+            // Extend the selection to the current mouse position
+            // Important: We don't check mouse bounds here to allow off-widget selection
+            needsRedraw = widget.extendSelection(mouseX_chars, mouseY_chars);
+            
+            if (needsRedraw) {
+                // Continuous auto-scroll on selection drag, but with debouncing to prevent flicker
+                if (!widget.selectionAutoScrollTimer) {
+                    console.log("Setting up auto-scroll timer");
+                    
+                    // Store mouse position for timer updates
+                    widget.lastMouseX = mouseX_chars;
+                    widget.lastMouseY = mouseY_chars;
+                    
+                    // Use slower timer to reduce flashing (250ms)
+                    widget.selectionAutoScrollTimer = setInterval(() => {
+                        // Only continue auto-scrolling if we're still selecting
+                        if (interactionState.isSelecting() && interactionState.targetWidget === widget) {
+                            console.log("Auto-scroll timer tick using position:", 
+                                       widget.lastMouseX, widget.lastMouseY);
+                            
+                            // Use the latest mouse position (updated during mouse moves)
+                            if (widget.extendSelection(widget.lastMouseX, widget.lastMouseY)) {
+                                drawTWidgets();
+                            }
+                        } else {
+                            // Stop timer if we're not selecting anymore
+                            console.log("Auto-scroll timer stopped - selection ended");
+                            clearInterval(widget.selectionAutoScrollTimer);
+                            widget.selectionAutoScrollTimer = null;
+                        }
+                    }, 250); // Slower auto-scroll timer (250ms instead of 100ms)
+                } else {
+                    // Just update the stored mouse position for the timer
+                    widget.lastMouseX = mouseX_chars;
+                    widget.lastMouseY = mouseY_chars;
+                }
+                
+                drawTWidgets();
+                return; // Skip other handlers
+            }
+        }
+    }
+    
+    // No action for other interactions if not active
+    if (!interactionState.isActive()) return;
+    
     // Delegate to specific handler based on interaction type
     if (interactionState.isScrolling()) {
         needsRedraw = handleScrollbarDragMove(mouseX_chars, mouseY_chars);
@@ -586,10 +640,30 @@ function handleMouseUp(e) {
                 "Type:", interactionState.type,
                 "Target:", interactionState.targetWidget?.constructor.name);
     
+    // Clean up selection auto-scroll timer if it exists
+    const widget = interactionState.targetWidget;
+    if (widget instanceof TEditorWidget && widget.selectionAutoScrollTimer) {
+        clearInterval(widget.selectionAutoScrollTimer);
+        widget.selectionAutoScrollTimer = null;
+        console.log("Cleared selection auto-scroll timer");
+    }
+    
     // Handle interaction completion based on type
     if (interactionState.isClicking()) {
         console.log("Handling click completion");
         handleClickCompletion(mouseX_chars, mouseY_chars);
+    } else if (interactionState.isSelecting()) {
+        console.log("Ending selection interaction");
+        // Check if the selection is empty (just a click)
+        if (widget instanceof TEditorWidget) {
+            if (widget.selection.startRow === widget.selection.endRow && 
+                widget.selection.startCol === widget.selection.endCol) {
+                // This was just a click (no actual selection), clear it
+                widget.selection.clear();
+            }
+        }
+        endActiveInteraction();
+        drawTWidgets(); // Redraw to update selection
     } else {
         console.log("Ending non-click interaction:", interactionState.type);
         // For other interaction types, just clean up

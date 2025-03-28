@@ -52,4 +52,22 @@ class Cell {
     static resizeHandle() {
         return new Cell('<span class="resize-handle">◢</span>', true);
     }
+    
+    /**
+     * Creates a cell with selection styling (inverted colors)
+     * @param {string} char - The character to display in the selection
+     * @param {boolean} isCursor - Whether this cell is also the cursor position
+     * @returns {Cell} A cell with selection styling
+     */
+    static selected(char, isCursor = false) {
+        const displayChar = (char === ' ' || !char) ? ' ' : escapeHtml(char);
+        
+        if (isCursor) {
+            // Both selected and cursor
+            return new Cell(`<span class="selected cursor">${displayChar}</span>`, true);
+        } else {
+            // Just selected
+            return new Cell(`<span class="selected">${displayChar}</span>`, true);
+        }
+    }
 }

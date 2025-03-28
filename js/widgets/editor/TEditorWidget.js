@@ -9,6 +9,12 @@ class TEditorWidget extends TScrollableWidget {
         this.editorWindow = new EditorWindow(contentHeight, contentWidth);
         this.isCursorBlinking = false; 
         this.cursorBlinkTimer = null;
+        this.selectionAutoScrollTimer = null; // Timer for auto-scrolling during selection
+        this.lastMouseX = 0; // Last mouse X position for auto-scroll timer
+        this.lastMouseY = 0; // Last mouse Y position for auto-scroll timer
+        
+        // Initialize selection
+        this.selection = new EditorSelection();
     }
 
     // Handle gaining focus - reset cursor blinking state and start blink timer
@@ -24,6 +30,22 @@ class TEditorWidget extends TScrollableWidget {
         clearTimeout(this.cursorBlinkTimer);
         this.cursorBlinkTimer = null;
         this.isCursorBlinking = false;
+    }
+    
+    /**
+     * Clean up resources when widget is destroyed
+     */
+    destroy() {
+        // Clear any timers
+        if (this.cursorBlinkTimer) {
+            clearTimeout(this.cursorBlinkTimer);
+            this.cursorBlinkTimer = null;
+        }
+        if (this.selectionAutoScrollTimer) {
+            clearInterval(this.selectionAutoScrollTimer);
+            this.selectionAutoScrollTimer = null;
+        }
+        super.destroy();
     }
 
     // Reset the cursor blink timer and handle redraw logic
@@ -256,12 +278,23 @@ class TEditorWidget extends TScrollableWidget {
                                        relRow === rr && 
                                        relCol === rc;
                     
-                    if (isCursorCell) {
-                        // Use a styled cursor cell
+                    // Check if this cell is part of the selection
+                    const isSelectedCell = this.selection.active && 
+                                         this.selection.contains(br, win.col + rc);
+                    
+                    if (isCursorCell && isSelectedCell) {
+                        // Cell is both cursor and selected
+                        this.debugLog("Drawing cursor in selection at", sx, sy);
+                        setChar(a, sx, sy, Cell.selected(ch, true));
+                    } else if (isCursorCell) {
+                        // Cell is just cursor
                         this.debugLog("Drawing cursor at", sx, sy);
                         setChar(a, sx, sy, Cell.cursor(ch, this.isCursorBlinking));
+                    } else if (isSelectedCell) {
+                        // Cell is just selected
+                        setChar(a, sx, sy, Cell.selected(ch));
                     } else {
-                        // Use a regular character
+                        // Regular character
                         setChar(a, sx, sy, ch);
                     }
                 }
@@ -282,6 +315,7 @@ class TEditorWidget extends TScrollableWidget {
         const win = this.editorWindow;
         const buf = this.buffer;
         const cur = this.cursor;
+        const isShiftPressed = e.shiftKey;
 
         this.resetCursorBlinkTimer();
 
@@ -291,36 +325,132 @@ class TEditorWidget extends TScrollableWidget {
         win.down(buf, cur);
         win.horizontal_scroll(cur);
 
-        if (key === "ArrowLeft") {
-            editorLeft(win, buf, cur);
+        // Track cursor position before movement for selection
+        const oldRow = cur.row;
+        const oldCol = cur.col;
+
+        // Handle arrow keys for navigation and selection
+        if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
+            // If there's an active selection and shift is not pressed
+            if (this.selection.active && !isShiftPressed) {
+                this.debugLog("Selection active, positioning cursor based on arrow key");
+                const { startRow, startCol, endRow, endCol } = this.selection.normalizedRange;
+                
+                if (key === "ArrowLeft") {
+                    // Left arrow: Move cursor to start of selection
+                    this.debugLog("Moving cursor to start of selection:", startRow, startCol);
+                    cur.row = startRow;
+                    cur.col = startCol;
+                    this.selection.clear();
+                } 
+                else if (key === "ArrowRight") {
+                    // Right arrow: Move cursor to end of selection
+                    this.debugLog("Moving cursor to end of selection:", endRow, endCol);
+                    cur.row = endRow;
+                    cur.col = endCol;
+                    this.selection.clear();
+                }
+                else if (key === "ArrowUp") {
+                    // Up arrow: Move cursor up from the start of the selection
+                    this.debugLog("Moving cursor up from start of selection");
+                    cur.row = startRow;
+                    cur.col = startCol;
+                    this.selection.clear();
+                    
+                    // Now move up one row while preserving column
+                    cur.up(buf);
+                }
+                else if (key === "ArrowDown") {
+                    // Down arrow: Move cursor down from the end of the selection
+                    this.debugLog("Moving cursor down from end of selection");
+                    cur.row = endRow;
+                    cur.col = endCol;
+                    this.selection.clear();
+                    
+                    // Now move down one row while preserving column
+                    cur.down(buf);
+                }
+                
+                // Ensure cursor is in view
+                win.up(cur);
+                win.down(buf, cur);
+                win.horizontal_scroll(cur);
+                
+                // We've handled this case, but don't return immediately
+                // just set handled = true and continue to the common end
+                handled = true;
+            } 
+            // If there's no selection or shift is pressed
+            else {
+                // Start selection if Shift is pressed and we don't have an active selection
+                if (isShiftPressed && !this.selection.active) {
+                    this.selection.start(oldRow, oldCol);
+                }
+                
+                // Move cursor based on arrow key
+                if (key === "ArrowLeft") {
+                    editorLeft(win, buf, cur);
+                }
+                else if (key === "ArrowRight") {
+                    editorRight(win, buf, cur);
+                }
+                else if (key === "ArrowUp") {
+                    cur.up(buf);
+                    win.up(cur);
+                    win.horizontal_scroll(cur);
+                }
+                else if (key === "ArrowDown") {
+                    cur.down(buf);
+                    win.down(buf, cur);
+                    win.horizontal_scroll(cur);
+                }
+                
+                // Update selection if Shift is pressed
+                if (isShiftPressed) {
+                    this.selection.extend(cur.row, cur.col);
+                } else {
+                    // Clear selection when moving cursor without Shift
+                    this.selection.clear();
+                }
+            }
         }
-        else if (key === "ArrowRight") {
-            editorRight(win, buf, cur);
-        }
-        else if (key === "ArrowUp") {
-            cur.up(buf);
-            win.up(cur);
-            win.horizontal_scroll(cur);
-        }
-        else if (key === "ArrowDown") {
-            cur.down(buf);
-            win.down(buf, cur);
-            win.horizontal_scroll(cur);
-        }
+        // Other editing commands
         else if (key === "Enter") {
+            // Clear selection before inserting newline
+            this.selection.clear();
             buf.split(cur);
             editorRight(win, buf, cur);
         }
         else if (key === "Backspace") {
-            if (cur.row > 0 || cur.col > 0) {
+            // Delete selection or character
+            if (this.selection.active) {
+                // TODO: Implement delete selection
+                // For now, just clear selection
+                this.selection.clear();
+            } else if (cur.row > 0 || cur.col > 0) {
                 editorLeft(win, buf, cur);
                 buf.delete(cur);
             }
         }
         else if (key === "Delete" || (e.ctrlKey && key === 'd')) {
-            buf.delete(cur);
+            // Delete selection or character
+            if (this.selection.active) {
+                // TODO: Implement delete selection
+                // For now, just clear selection
+                this.selection.clear();
+            } else {
+                buf.delete(cur);
+            }
         }
         else if (key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            // Replace selection with typed character
+            if (this.selection.active) {
+                // TODO: Implement replace selection
+                // For now, just clear selection
+                this.selection.clear();
+            }
+            
+            // Insert character and move cursor
             buf.insert(cur, key);
             for (let i = 0; i < key.length; i++) {
                 editorRight(win, buf, cur);
@@ -351,7 +481,7 @@ class TEditorWidget extends TScrollableWidget {
             return true;
         }
 
-        // Now handle editor-specific mouseDown (cursor positioning)
+        // Now handle editor-specific mouseDown (cursor positioning and selection start)
         const dims = this.getContentDimensions();
         const relX = x - this.x - 1;
         const relY = y - this.y - 1;
@@ -369,11 +499,22 @@ class TEditorWidget extends TScrollableWidget {
             
             console.log("Setting cursor to buffer position:", targetRow, targetCol);
 
+            // Update cursor position
             this.cursor.row = clamp(targetRow, 0, this.buffer.bottom);
             const lineLength = this.buffer.getLine(this.cursor.row).length;
             this.cursor.col = clamp(targetCol, 0, lineLength);
             
             console.log("Final cursor position:", this.cursor.row, this.cursor.col);
+
+            // Clear any existing selection
+            this.selection.clear();
+            
+            // Set up selection start (actual selection will happen on mouse move)
+            if (!interactionState.isSelecting()) {
+                interactionState.startSelecting(this, x, y);
+                // Start selection at current cursor position
+                this.selection.start(this.cursor.row, this.cursor.col);
+            }
 
             win.up(this.cursor);
             win.down(this.buffer, this.cursor);
@@ -386,11 +527,159 @@ class TEditorWidget extends TScrollableWidget {
         return false;
     }
     
+    /**
+     * Extend selection to a position
+     * @param {number} x - Mouse x coordinate in character units
+     * @param {number} y - Mouse y coordinate in character units
+     * @returns {boolean} - True if selection was updated
+     */
+    extendSelection(x, y) {
+        // Detailed logging to track selection process
+        this.debugLog("=== EXTEND SELECTION START ===");
+        this.debugLog("Mouse position:", x, y);
+        this.debugLog("Widget bounds:", this.x, this.y, this.w, this.h);
+        
+        const dims = this.getContentDimensions();
+        const win = this.editorWindow;
+        
+        // Calculate relative positions more carefully
+        const relX = x - this.x - 1;
+        const relY = y - this.y - 1;
+        
+        this.debugLog("Relative position:", relX, relY);
+        this.debugLog("Current window scroll:", win.row, win.col);
+        this.debugLog("Content dimensions:", dims.contentWidth, dims.contentHeight);
+        this.debugLog("Buffer size:", this.buffer.length, this.buffer.maxLineLength);
+        
+        // Determine auto-scroll direction more precisely
+        // We need to detect which edge of the widget the mouse is closest to
+        
+        // Calculate distances to widget edges
+        const distToTop = y - this.y;
+        const distToBottom = (this.y + this.h) - y;
+        const distToLeft = x - this.x;
+        const distToRight = (this.x + this.w) - x;
+        
+        // Detect if we need auto-scrolling and in which direction
+        let scrollVertical = 0;  // -1: up, 0: none, 1: down
+        let scrollHorizontal = 0; // -1: left, 0: none, 1: right
+        
+        // Determine vertical scroll direction
+        if (distToTop <= 1 && win.row > 0) {
+            scrollVertical = -1; // Scroll up
+        } else if (distToBottom <= 1 && win.row + dims.contentHeight < this.buffer.length) {
+            scrollVertical = 1;  // Scroll down
+        }
+        
+        // Determine horizontal scroll direction
+        if (distToLeft <= 1 && win.col > 0) {
+            scrollHorizontal = -1; // Scroll left
+        } else if (distToRight <= 1 && win.col + dims.contentWidth < this.buffer.maxLineLength) {
+            scrollHorizontal = 1;  // Scroll right
+        }
+        
+        this.debugLog("Scroll direction - vertical:", scrollVertical, "horizontal:", scrollHorizontal);
+        
+        // Apply auto-scrolling (only one step per call to avoid jumps)
+        let autoScrolled = false;
+        
+        if (scrollVertical === -1) {
+            this.debugLog("Auto-scrolling UP");
+            win.row = Math.max(0, win.row - 1);
+            autoScrolled = true;
+        } else if (scrollVertical === 1) {
+            this.debugLog("Auto-scrolling DOWN");
+            win.row++;
+            autoScrolled = true;
+        }
+        
+        if (scrollHorizontal === -1) {
+            this.debugLog("Auto-scrolling LEFT");
+            win.col = Math.max(0, win.col - 1);
+            autoScrolled = true;
+        } else if (scrollHorizontal === 1) {
+            this.debugLog("Auto-scrolling RIGHT");
+            win.col++;
+            autoScrolled = true;
+        }
+        
+        // Calculate target cursor position
+        let targetRow, targetCol;
+        
+        // Handle vertical position - convert mouse position to buffer coordinates
+        if (relY < 0) {
+            // Above viewport - target first visible line
+            targetRow = win.row;
+            this.debugLog("Mouse above viewport, targeting first visible row:", targetRow);
+        } else if (relY >= dims.contentHeight) {
+            // Below viewport - target last visible line
+            targetRow = win.row + dims.contentHeight - 1;
+            this.debugLog("Mouse below viewport, targeting last visible row:", targetRow);
+        } else {
+            // Within viewport - direct mapping
+            targetRow = win.row + relY;
+            this.debugLog("Mouse within viewport vertical, targeting row:", targetRow);
+        }
+        
+        // Handle horizontal position - convert mouse position to buffer coordinates
+        if (relX < 0) {
+            // Left of viewport - target start of visible area
+            targetCol = win.col;
+            this.debugLog("Mouse left of viewport, targeting start column:", targetCol);
+        } else if (relX >= dims.contentWidth) {
+            // Right of viewport - target end of visible area
+            targetCol = win.col + dims.contentWidth - 1;
+            this.debugLog("Mouse right of viewport, targeting end column:", targetCol);
+        } else {
+            // Within viewport - direct mapping
+            targetCol = win.col + relX;
+            this.debugLog("Mouse within viewport horizontal, targeting column:", targetCol);
+        }
+        
+        // Safety: clamp to valid buffer ranges
+        targetRow = clamp(targetRow, 0, this.buffer.bottom);
+        const lineLength = this.buffer.getLine(targetRow).length;
+        targetCol = clamp(targetCol, 0, lineLength);
+        
+        this.debugLog("Final target position (after clamping):", targetRow, targetCol);
+        
+        // Update cursor position
+        const cursorMoved = (this.cursor.row !== targetRow || this.cursor.col !== targetCol);
+        if (cursorMoved) {
+            this.debugLog("Cursor moved from", this.cursor.row, this.cursor.col, "to", targetRow, targetCol);
+            this.cursor.row = targetRow;
+            this.cursor.col = targetCol;
+        }
+        
+        // Extend selection to new cursor position
+        this.selection.extend(this.cursor.row, this.cursor.col);
+        
+        // Adjust scroll if needed (in addition to auto-scroll)
+        win.up(this.cursor);
+        win.down(this.buffer, this.cursor);
+        win.horizontal_scroll(this.cursor);
+        
+        this.debugLog("Selection state after update:", this.selection.getDebugInfo());
+        this.debugLog("=== EXTEND SELECTION END ===");
+        
+        // Return whether anything changed - scrolling or cursor movement
+        return autoScrolled || cursorMoved;
+    }
+    
     // Handle mouse click for cursor positioning (still needed for compatibility)
     click(x, y) {
         super.click(x, y);
         console.log("Editor click at", x, y);
-        // The cursor is already positioned by mouseDown, so we don't need to do anything here
+        
+        // The cursor is already positioned by mouseDown.
+        // If we didn't drag (no selection was made), clear any existing selection
+        if (!this.selection.active || 
+            (this.selection.startRow === this.selection.endRow && 
+             this.selection.startCol === this.selection.endCol)) {
+            this.selection.clear();
+            // Redraw to show selection cleared
+            drawTWidgets();
+        }
     }
 
     // For scroll handling, we use the base class implementation
