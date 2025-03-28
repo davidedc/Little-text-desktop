@@ -298,6 +298,17 @@ function handleMouseDown(e) {
             return;
         }
         
+        // Try to handle mouseDown directly using polymorphism
+        // Any widget can handle immediate mouse down actions by implementing mouseDown
+        // and returning true when the event is handled
+        console.log("Trying widget mouseDown directly");
+        const handled = widget.mouseDown(mouseX_chars, mouseY_chars);
+        if (handled) {
+            console.log("Widget mouseDown handled directly");
+            // Still keep the interaction state as click for mouse up handling
+            return;
+        }
+        
         // If we get here, it's a normal click that will be handled on mouseup
         console.log("Normal click will be handled on mouse up");
         // The click state is already set in interactionState

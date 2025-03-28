@@ -337,21 +337,33 @@ class TEditorWidget extends TScrollableWidget {
         return handled;
     }
 
-    // Handle mouse click for cursor positioning
-    click(x, y) {
-        super.click(x, y);
-        console.log("Editor click at", x, y);
-        this.resetCursorBlinkTimer();
+    /**
+     * Handle mouse press (called on mousedown)
+     * @param {number} x - Mouse x coordinate in character units
+     * @param {number} y - Mouse y coordinate in character units
+     * @returns {boolean} - True if the event was handled, false otherwise
+     */
+    mouseDown(x, y) {
+        console.log("Editor mouseDown at", x, y);
+        
+        // First check if parent implementation handles it (e.g., scrollbars)
+        if (super.mouseDown(x, y)) {
+            return true;
+        }
 
+        // Now handle editor-specific mouseDown (cursor positioning)
         const dims = this.getContentDimensions();
         const relX = x - this.x - 1;
         const relY = y - this.y - 1;
-        const win = this.editorWindow;
         
         console.log("Editor content area:", dims.contentWidth, dims.contentHeight);
-        console.log("Relative click position:", relX, relY);
+        console.log("Relative mouseDown position:", relX, relY);
 
+        // Check if mouse is within content area
         if (relX >= 0 && relX < dims.contentWidth && relY >= 0 && relY < dims.contentHeight) {
+            this.resetCursorBlinkTimer();
+            
+            const win = this.editorWindow;
             const targetRow = win.row + relY;
             const targetCol = win.col + relX;
             
@@ -367,9 +379,18 @@ class TEditorWidget extends TScrollableWidget {
             win.down(this.buffer, this.cursor);
             win.horizontal_scroll(this.cursor);
             drawTWidgets();
-        } else {
-            console.log("Click outside editor content area");
+            return true;
         }
+        
+        console.log("MouseDown not handled by editor");
+        return false;
+    }
+    
+    // Handle mouse click for cursor positioning (still needed for compatibility)
+    click(x, y) {
+        super.click(x, y);
+        console.log("Editor click at", x, y);
+        // The cursor is already positioned by mouseDown, so we don't need to do anything here
     }
 
     // For scroll handling, we use the base class implementation

@@ -43,6 +43,12 @@ class TWidget {
         return false;
     }
 
+    // Handle mouse down events at coordinates (x,y)
+    mouseDown(x, y) {
+        // Default empty implementation, return false to indicate not handled
+        return false;
+    }
+    
     // Handle click events at coordinates (x,y)
     click(x, y) {
         // Default empty implementation
