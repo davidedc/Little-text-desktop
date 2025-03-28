@@ -96,13 +96,31 @@ class TEditorWidget extends TScrollableWidget {
         const maxHeight = Math.max(0, this.h - 2);
         const maxWidth = Math.max(0, this.w - 2);
 
+        // Get current scroll position and buffer size
+        const currentVerticalPos = this.getVerticalScrollPosition();
+        const currentHorizontalPos = this.getHorizontalScrollPosition();
+        const totalLines = this.buffer.length;
+        const maxLineLength = this.buffer.maxLineLength;
+
+        this.debugLog("DIMS - Editor window position:", 
+                     "row:", this.editorWindow.row, 
+                     "col:", this.editorWindow.col);
+        this.debugLog("DIMS - Buffer:", 
+                     "totalLines:", totalLines, 
+                     "maxLineLength:", maxLineLength);
+        this.debugLog("DIMS - Viewport:", 
+                     "maxHeight:", maxHeight, 
+                     "maxWidth:", maxWidth);
+
         // Check if vertical scrollbar might be needed initially
-        const verticalPossiblyNeeded = this.buffer.length > maxHeight && 
+        // Consider: either content > viewport OR we're scrolled down
+        const verticalPossiblyNeeded = (this.buffer.length > maxHeight || currentVerticalPos > 0) && 
                                      maxWidth > 0 && 
                                      maxHeight > 0;
 
         // Check if horizontal scrollbar might be needed initially  
-        const horizontalPossiblyNeeded = this.buffer.maxLineLength > maxWidth && 
+        // Consider: either content > viewport OR we're scrolled right
+        const horizontalPossiblyNeeded = (this.buffer.maxLineLength > maxWidth || currentHorizontalPos > 0) && 
                                        maxWidth > 0 && 
                                        maxHeight > 0;
 
@@ -110,7 +128,7 @@ class TEditorWidget extends TScrollableWidget {
         const heightForVertical = maxHeight - (horizontalPossiblyNeeded ? 1 : 0);
 
         // Final check if vertical scrollbar is needed with adjusted height
-        const verticalNeeded = this.buffer.length > heightForVertical && 
+        const verticalNeeded = (this.buffer.length > heightForVertical || currentVerticalPos > 0) && 
                              maxWidth > 0 && 
                              heightForVertical > 0;
 
@@ -118,7 +136,7 @@ class TEditorWidget extends TScrollableWidget {
         const widthForHorizontal = maxWidth - (verticalPossiblyNeeded ? 1 : 0);
 
         // Final check if horizontal scrollbar is needed with adjusted width
-        const horizontalNeeded = this.buffer.maxLineLength > widthForHorizontal && 
+        const horizontalNeeded = (this.buffer.maxLineLength > widthForHorizontal || currentHorizontalPos > 0) && 
                                widthForHorizontal > 0 && 
                                maxHeight > 0;
 
@@ -137,7 +155,7 @@ class TEditorWidget extends TScrollableWidget {
             contentHeight: contentHeight
         };
 
-        this.debugLog("Content dimensions:", result);
+        this.debugLog("Content dimensions result:", result);
         return result;
     }
     

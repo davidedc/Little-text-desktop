@@ -9,7 +9,7 @@ class TScrollableWidget extends TWidget {
         super(x, y, w, h, title);
         
         // Debug flag - set to true to log scrolling operations
-        this.debugScrolling = false;
+        this.debugScrolling = true;
     }
 
     /**
@@ -91,27 +91,51 @@ class TScrollableWidget extends TWidget {
      * @returns {Object|null} Scrollbar information or null if scrollbar not needed
      */
     getVerticalScrollbarInfo() {
-        const dims = this.getContentDimensions();
-        if (!dims || !dims.vScrollNeeded) {
-            this.debugLog("Vertical scrollbar not needed");
-            return null;
+        // Always get the current scroll position first
+        const currentPosition = this.getVerticalScrollPosition();
+        
+        this.debugLog("Checking vertical scrollbar, current position:", currentPosition);
+        
+        // If we're scrolled, we need a scrollbar regardless of content size
+        if (currentPosition > 0) {
+            this.debugLog("Content is scrolled, definitely need scrollbar");
+            // Proceed with scrollbar calculation
+        } else {
+            // Otherwise, check content dimensions
+            const dims = this.getContentDimensions();
+            if (!dims || !dims.vScrollNeeded) {
+                this.debugLog("Vertical scrollbar not needed by dimensions check");
+                this.debugLog("Dimensions:", dims);
+                return null;
+            }
         }
 
+        const dims = this.getContentDimensions();
         const trackSize = dims.contentHeight;
         const totalLines = this.getVerticalContentSize();
         const visibleLines = trackSize;
+        
+        this.debugLog("SCROLLBAR CHECK - trackSize:", trackSize, "totalLines:", totalLines, 
+                     "visibleLines:", visibleLines, "currentPosition:", currentPosition);
 
-        // Handle edge case where content is smaller than viewport
-        if (totalLines <= visibleLines) {
-            this.debugLog("Content fits in viewport, no scrollbar needed");
+        // IMPORTANT: Force scrollbar visibility when scrolled, even if content would now fit
+        // This is the key to fixing the issue where scrollbar disappears when content fits
+        // but is still scrolled out of view
+        const scrollNeeded = totalLines > visibleLines || currentPosition > 0;
+        
+        this.debugLog("Scroll needed?", scrollNeeded, 
+                     "totalLines > visibleLines:", totalLines > visibleLines,
+                     "currentPosition > 0:", currentPosition > 0);
+        
+        if (!scrollNeeded) {
+            this.debugLog("Content fits in viewport and is not scrolled, no scrollbar needed");
             return null;
         }
 
-        const thumbSize = Math.max(1, Math.floor(trackSize * visibleLines / totalLines));
+        const thumbSize = Math.max(1, Math.floor(trackSize * visibleLines / Math.max(totalLines, visibleLines + currentPosition)));
         const maxThumbPos = trackSize - thumbSize;
-        const currentPosition = this.getVerticalScrollPosition();
-        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * currentPosition / totalLines));
-        const maxScrollOffset = totalLines - visibleLines;
+        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * currentPosition / Math.max(totalLines, visibleLines + currentPosition)));
+        const maxScrollOffset = Math.max(0, totalLines - visibleLines, currentPosition);
 
         const info = {
             trackSize,
@@ -131,25 +155,50 @@ class TScrollableWidget extends TWidget {
      * @returns {Object|null} Scrollbar information or null if scrollbar not needed
      */
     getHorizontalScrollbarInfo() {
-        const dims = this.getContentDimensions();
-        if (!dims || !dims.hScrollNeeded) {
-            return null;
+        // Always get the current scroll position first
+        const currentPosition = this.getHorizontalScrollPosition();
+        
+        this.debugLog("Checking horizontal scrollbar, current position:", currentPosition);
+        
+        // If we're scrolled, we need a scrollbar regardless of content size
+        if (currentPosition > 0) {
+            this.debugLog("Content is horizontally scrolled, definitely need scrollbar");
+            // Proceed with scrollbar calculation
+        } else {
+            // Otherwise, check content dimensions
+            const dims = this.getContentDimensions();
+            if (!dims || !dims.hScrollNeeded) {
+                this.debugLog("Horizontal scrollbar not needed by dimensions check");
+                return null;
+            }
         }
 
+        const dims = this.getContentDimensions();
         const trackSize = dims.contentWidth;
         const totalCols = this.getHorizontalContentSize();
         const visibleCols = trackSize;
+        
+        this.debugLog("HSCROLLBAR CHECK - trackSize:", trackSize, "totalCols:", totalCols, 
+                     "visibleCols:", visibleCols, "currentPosition:", currentPosition);
 
-        // Handle edge case where content is smaller than viewport
-        if (totalCols <= visibleCols) {
+        // IMPORTANT: Force scrollbar visibility when scrolled, even if content would now fit
+        // This is the key to fixing the issue where scrollbar disappears when content fits
+        // but is still scrolled out of view
+        const scrollNeeded = totalCols > visibleCols || currentPosition > 0;
+        
+        this.debugLog("H-Scroll needed?", scrollNeeded, 
+                     "totalCols > visibleCols:", totalCols > visibleCols,
+                     "currentPosition > 0:", currentPosition > 0);
+        
+        if (!scrollNeeded) {
+            this.debugLog("Content fits in viewport horizontally and is not scrolled, no scrollbar needed");
             return null;
         }
 
-        const thumbSize = Math.max(1, Math.floor(trackSize * visibleCols / totalCols));
+        const thumbSize = Math.max(1, Math.floor(trackSize * visibleCols / Math.max(totalCols, visibleCols + currentPosition)));
         const maxThumbPos = trackSize - thumbSize;
-        const currentPosition = this.getHorizontalScrollPosition();
-        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * currentPosition / totalCols));
-        const maxScrollOffset = totalCols - visibleCols;
+        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * currentPosition / Math.max(totalCols, visibleCols + currentPosition)));
+        const maxScrollOffset = Math.max(0, totalCols - visibleCols, currentPosition);
 
         return {
             trackSize,
@@ -196,34 +245,41 @@ class TScrollableWidget extends TWidget {
      * @returns {boolean} True if scroll position changed, false otherwise
      */
     scroll(delta) {
-        const info = this.getVerticalScrollbarInfo();
+        const currentPos = this.getVerticalScrollPosition();
         
-        // Special case: allow scrolling down even without scrollbar if there's content below
-        if (!info && delta > 0) {
+        // Allow scrolling in either direction if we're not at the top/bottom
+        if (currentPos > 0 || delta > 0) {
             const totalSize = this.getVerticalContentSize();
-            const currentPos = this.getVerticalScrollPosition();
+            const dims = this.getContentDimensions();
+            const visibleLines = dims ? dims.contentHeight : 0;
             
-            if (totalSize > 0 && currentPos < totalSize - 1) {
-                this.debugLog("Scrolling without scrollbar, delta:", delta);
-                const changed = this.updateScrollOffset('vertical', currentPos + 1);
+            // Calculate new position
+            const newOffset = currentPos + Math.sign(delta);
+            
+            // Only allow scrolling within valid range
+            if (newOffset >= 0 && (delta < 0 || newOffset < totalSize)) {
+                this.debugLog("Scrolling with delta:", delta, "new offset:", newOffset);
+                const changed = this.setVerticalScrollPosition(newOffset);
                 if (changed) {
                     drawTWidgets();
                 }
                 return true;
             }
-            return false;
         }
-
-        // No scrolling if no scrollbar
-        if (!info) return false;
-
-        const newOffset = this.getVerticalScrollPosition() + Math.sign(delta);
-        this.debugLog("Scroll with delta:", delta, "new offset:", newOffset);
-        const changed = this.updateScrollOffset('vertical', newOffset);
-        if (changed) {
-            drawTWidgets();
+        
+        // If we have scroll info (scrollbar is visible), use standard scrolling
+        const info = this.getVerticalScrollbarInfo();
+        if (info) {
+            const newOffset = currentPos + Math.sign(delta);
+            this.debugLog("Scroll with scrollbar, delta:", delta, "new offset:", newOffset);
+            const changed = this.updateScrollOffset('vertical', newOffset);
+            if (changed) {
+                drawTWidgets();
+            }
+            return changed;
         }
-        return changed;
+        
+        return false;
     }
 
     /**
@@ -232,10 +288,14 @@ class TScrollableWidget extends TWidget {
      * @param {Object} dims Content dimensions from getContentDimensions()
      */
     drawScrollbars(charGrid, dims) {
+        this.debugLog("Drawing scrollbars - vScrollNeeded:", dims.vScrollNeeded, 
+                     "hScrollNeeded:", dims.hScrollNeeded);
+        
         // Draw vertical scrollbar if needed
         if (dims.vScrollNeeded) {
             const scrollInfo = this.getVerticalScrollbarInfo();
             if (scrollInfo) {
+                this.debugLog("Drawing vertical scrollbar, info:", scrollInfo);
                 // Draw vertical track and thumb
                 for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
                     const isThumb = (pos >= scrollInfo.thumbPosition && 
@@ -243,6 +303,8 @@ class TScrollableWidget extends TWidget {
                     const char = isThumb ? '#' : '│';
                     setChar(charGrid, this.x + this.w - 2, this.y + 1 + pos, char);
                 }
+            } else {
+                this.debugLog("Vertical scrollbar needed but getVerticalScrollbarInfo returned null");
             }
         }
 
@@ -250,6 +312,7 @@ class TScrollableWidget extends TWidget {
         if (dims.hScrollNeeded) {
             const scrollInfo = this.getHorizontalScrollbarInfo();
             if (scrollInfo) {
+                this.debugLog("Drawing horizontal scrollbar, info:", scrollInfo);
                 // Draw horizontal track and thumb
                 for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
                     const isThumb = (pos >= scrollInfo.thumbPosition && 
@@ -257,6 +320,8 @@ class TScrollableWidget extends TWidget {
                     const char = isThumb ? '#' : '─';
                     setChar(charGrid, this.x + 1 + pos, this.y + this.h - 2, char);
                 }
+            } else {
+                this.debugLog("Horizontal scrollbar needed but getHorizontalScrollbarInfo returned null");
             }
         }
 

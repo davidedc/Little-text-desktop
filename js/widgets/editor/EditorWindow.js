@@ -5,6 +5,16 @@ class EditorWindow {
         this.n_cols = cols;     // Number of columns in the window
         this.row = startRow;    // Starting row position (scroll offset)
         this.col = startCol;    // Starting column position (scroll offset)
+        
+        // Enable debug logging
+        this.debug = true;
+    }
+    
+    // Log debug information
+    log(...args) {
+        if (this.debug) {
+            console.log("[EditorWindow]", ...args);
+        }
     }
 
     // Get the bottom-most row number of the window
@@ -14,15 +24,44 @@ class EditorWindow {
 
     // Scroll window up if cursor moves above window
     up(cursor) {
+        this.log("up check - cursor.row:", cursor.row, "window.row:", this.row);
         if (cursor.row < this.row) {
+            this.log("Scrolling window up to", cursor.row);
             this.row = cursor.row;
         }
     }
 
     // Scroll window down if cursor moves below window
     down(buffer, cursor) {
+        this.log("down check - cursor.row:", cursor.row, "window.bottom:", this.bottom);
+        
         if (cursor.row > this.bottom) {
-            this.row = cursor.row - this.n_rows + 1;
+            const newRow = cursor.row - this.n_rows + 1;
+            this.log("Scrolling window down to", newRow);
+            this.row = newRow;
+        } else {
+            // If we're scrolled down and content was deleted,
+            // check if we need to keep some scroll position
+            if (this.row > 0) {
+                // Calculate if all content would now fit in viewport
+                const totalContent = buffer.length;
+                const viewportSize = this.n_rows;
+                
+                this.log("Scroll position check - row:", this.row, 
+                         "totalContent:", totalContent, 
+                         "viewportSize:", viewportSize);
+                
+                // If total content is less than viewport plus current scroll,
+                // adjust scroll position to show all content
+                if (totalContent <= viewportSize && this.row > 0) {
+                    // Only adjust if necessary to show all content
+                    if (totalContent > 0 && this.row > totalContent - 1) {
+                        const newRow = Math.max(0, totalContent - viewportSize);
+                        this.log("Adjusting scroll to show all content:", newRow);
+                        this.row = newRow;
+                    }
+                }
+            }
         }
     }
 
