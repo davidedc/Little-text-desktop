@@ -12,9 +12,14 @@ class TEditorWidget extends TScrollableWidget {
         this.selectionAutoScrollTimer = null; // Timer for auto-scrolling during selection
         this.lastMouseX = 0; // Last mouse X position for auto-scroll timer
         this.lastMouseY = 0; // Last mouse Y position for auto-scroll timer
+        this.internalClipboard = ""; // Fallback clipboard for browsers without clipboard API
         
         // Initialize selection
         this.selection = new EditorSelection();
+        
+        // Determine META key based on OS
+        this.META_KEY = /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? 'metaKey' : 'ctrlKey';
+        this.debugLog(`Using ${this.META_KEY} as meta key for this platform`);
     }
 
     // Handle gaining focus - reset cursor blinking state and start blink timer
@@ -316,7 +321,9 @@ class TEditorWidget extends TScrollableWidget {
         const buf = this.buffer;
         const cur = this.cursor;
         const isShiftPressed = e.shiftKey;
+        const isMetaPressed = e[this.META_KEY]; // Use platform-specific key (Ctrl or Cmd)
 
+        this.debugLog(`Key press: ${key}, Meta: ${isMetaPressed}, Shift: ${isShiftPressed}`);
         this.resetCursorBlinkTimer();
 
         // Ensure cursor stays within valid bounds
@@ -329,6 +336,38 @@ class TEditorWidget extends TScrollableWidget {
         const oldRow = cur.row;
         const oldCol = cur.col;
 
+        // Handle clipboard operations (Cut, Copy, Paste) first
+        if (isMetaPressed && (key === 'x' || key === 'c' || key === 'v')) {
+            this.debugLog(`Clipboard operation: ${key.toUpperCase()}`);
+            
+            // Prevent default browser behavior (including sounds)
+            e.preventDefault();
+            
+            if (key === 'x') {
+                // Cut operation
+                this.cutSelectedText().then(success => {
+                    if (!success) {
+                        showStatusMessage("Nothing to cut", 2000);
+                    }
+                });
+                return true;
+            } 
+            else if (key === 'c') {
+                // Copy operation
+                this.copySelectedText().then(success => {
+                    if (!success) {
+                        showStatusMessage("Nothing to copy", 2000);
+                    }
+                });
+                return true;
+            } 
+            else if (key === 'v') {
+                // Paste operation
+                this.pasteText();
+                return true;
+            }
+        }
+        
         // Handle arrow keys for navigation and selection
         if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
             // If there's an active selection and shift is not pressed
@@ -416,17 +455,18 @@ class TEditorWidget extends TScrollableWidget {
         }
         // Other editing commands
         else if (key === "Enter") {
-            // Clear selection before inserting newline
-            this.selection.clear();
-            buf.split(cur);
-            editorRight(win, buf, cur);
+            // Replace selection or insert newline
+            if (this.selection.active) {
+                this.replaceSelection("\n");
+            } else {
+                buf.split(cur);
+                editorRight(win, buf, cur);
+            }
         }
         else if (key === "Backspace") {
             // Delete selection or character
             if (this.selection.active) {
-                // TODO: Implement delete selection
-                // For now, just clear selection
-                this.selection.clear();
+                this.deleteSelection();
             } else if (cur.row > 0 || cur.col > 0) {
                 editorLeft(win, buf, cur);
                 buf.delete(cur);
@@ -435,9 +475,7 @@ class TEditorWidget extends TScrollableWidget {
         else if (key === "Delete" || (e.ctrlKey && key === 'd')) {
             // Delete selection or character
             if (this.selection.active) {
-                // TODO: Implement delete selection
-                // For now, just clear selection
-                this.selection.clear();
+                this.deleteSelection();
             } else {
                 buf.delete(cur);
             }
@@ -445,15 +483,13 @@ class TEditorWidget extends TScrollableWidget {
         else if (key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
             // Replace selection with typed character
             if (this.selection.active) {
-                // TODO: Implement replace selection
-                // For now, just clear selection
-                this.selection.clear();
-            }
-            
-            // Insert character and move cursor
-            buf.insert(cur, key);
-            for (let i = 0; i < key.length; i++) {
-                editorRight(win, buf, cur);
+                this.replaceSelection(key);
+            } else {
+                // Insert character and move cursor
+                buf.insert(cur, key);
+                for (let i = 0; i < key.length; i++) {
+                    editorRight(win, buf, cur);
+                }
             }
         }
         else {
@@ -684,4 +720,291 @@ class TEditorWidget extends TScrollableWidget {
 
     // For scroll handling, we use the base class implementation
     // from TScrollableWidget
+    
+    /**
+     * Clipboard operations
+     */
+    
+    /**
+     * Copy selected text to clipboard
+     * @returns {Promise<boolean>} Success state
+     */
+    async copySelectedText() {
+        this.debugLog("Starting copy operation");
+        if (!this.selection.active) {
+            this.debugLog("No active selection to copy");
+            return false;
+        }
+        
+        const selectedText = this.selection.getSelectedText(this.buffer);
+        this.debugLog(`Copying text: "${selectedText}"`);
+        
+        // Try to use system clipboard with fallback to internal
+        try {
+            // Try modern Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                this.debugLog("Using navigator.clipboard API");
+                await navigator.clipboard.writeText(selectedText);
+                showStatusMessage("Copied to clipboard");
+                return true;
+            } else {
+                // Fallback to execCommand
+                this.debugLog("Falling back to execCommand");
+                const textarea = document.createElement('textarea');
+                textarea.value = selectedText;
+                textarea.style.position = 'absolute';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                
+                try {
+                    const success = document.execCommand('copy');
+                    this.debugLog("execCommand copy result:", success);
+                    if (success) {
+                        showStatusMessage("Copied to clipboard");
+                    }
+                    return success;
+                } catch (e) {
+                    this.debugLog("execCommand failed:", e);
+                    // Final fallback to internal clipboard
+                    this.internalClipboard = selectedText;
+                    showStatusMessage("Copied to internal clipboard");
+                    return true;
+                } finally {
+                    document.body.removeChild(textarea);
+                }
+            }
+        } catch (err) {
+            this.debugLog("Clipboard copy error:", err);
+            // Fallback to internal clipboard
+            this.internalClipboard = selectedText;
+            showStatusMessage("Copied to internal clipboard");
+            return true;
+        }
+    }
+    
+    /**
+     * Cut selected text (copy + delete)
+     * @returns {Promise<boolean>} Success state
+     */
+    async cutSelectedText() {
+        this.debugLog("Starting cut operation");
+        if (!this.selection.active) {
+            this.debugLog("No active selection to cut");
+            return false;
+        }
+        
+        // First copy the selected text
+        const copyResult = await this.copySelectedText();
+        if (!copyResult) {
+            this.debugLog("Failed to copy text for cut operation");
+            return false;
+        }
+        
+        // Then delete the selection
+        this.debugLog("Deleting selection after copy");
+        this.deleteSelection();
+        showStatusMessage("Cut to clipboard");
+        drawTWidgets();
+        return true;
+    }
+    
+    /**
+     * Paste text from clipboard
+     * @returns {Promise<boolean>} Success state
+     */
+    async pasteText() {
+        this.debugLog("Starting paste operation");
+        let textToPaste = "";
+        
+        try {
+            // Try modern Clipboard API
+            if (navigator.clipboard && navigator.clipboard.readText) {
+                this.debugLog("Using navigator.clipboard API for paste");
+                textToPaste = await navigator.clipboard.readText();
+            } else {
+                // No good alternative for paste via execCommand, 
+                // fall back to internal clipboard
+                this.debugLog("Falling back to internal clipboard for paste");
+                textToPaste = this.internalClipboard;
+                showStatusMessage("Pasted from internal clipboard");
+            }
+        } catch (err) {
+            this.debugLog("Clipboard paste error:", err);
+            // Fallback to internal clipboard
+            textToPaste = this.internalClipboard;
+            showStatusMessage("Pasted from internal clipboard");
+        }
+        
+        this.debugLog(`Pasting text: "${textToPaste}"`);
+        
+        // Replace selection with pasted text or insert at cursor
+        if (this.selection.active) {
+            this.replaceSelection(textToPaste);
+        } else {
+            this.insertTextAtCursor(textToPaste);
+        }
+        
+        drawTWidgets();
+        return true;
+    }
+    
+    /**
+     * Delete the current selection
+     * @returns {boolean} Whether deletion was performed
+     */
+    deleteSelection() {
+        console.log("========= MULTI-LINE DELETION DEBUGGING =========");
+        console.log("deleteSelection called");
+        if (!this.selection.active) {
+            console.log("No active selection to delete");
+            return false;
+        }
+        
+        const { startRow, startCol, endRow, endCol } = this.selection.normalizedRange;
+        console.log(`DELETE RANGE: [${startRow},${startCol}] to [${endRow},${endCol}]`);
+        console.log(`Buffer size BEFORE: ${this.buffer.length} lines`);
+        
+        // Show buffer content before deletion
+        console.log("BUFFER BEFORE:");
+        for (let i = 0; i < this.buffer.length; i++) {
+            if (i >= startRow - 1 && i <= endRow + 1) {
+                console.log(`  Line ${i}: ${JSON.stringify(this.buffer.getLine(i).substring(0, 50))}${this.buffer.getLine(i).length > 50 ? "..." : ""}`);
+            }
+        }
+        
+        // Position cursor at start of selection
+        this.cursor.row = startRow;
+        this.cursor.col = startCol;
+        
+        if (startRow === endRow) {
+            // Single line deletion
+            console.log("SINGLE LINE DELETION");
+            const deleteCount = endCol - startCol;
+            console.log(`Deleting ${deleteCount} characters`);
+            for (let i = 0; i < deleteCount; i++) {
+                this.buffer.delete(this.cursor);
+            }
+        } else {
+            // Multi-line deletion - completely different approach
+            console.log("MULTI-LINE DELETION");
+            
+            // Step 1: Save content before and after the selection that we want to keep
+            const beforeSelection = this.buffer.getLine(startRow).substring(0, startCol);
+            const afterSelection = this.buffer.getLine(endRow).substring(endCol);
+            console.log(`Keeping content before: "${beforeSelection}"`);
+            console.log(`Keeping content after: "${afterSelection}"`);
+            
+            // Create the result directly - concatenate the parts we want to keep
+            const resultLine = beforeSelection + afterSelection;
+            console.log(`Result line will be: "${resultLine}"`);
+            
+            // Step 2: Remove all lines from endRow down to startRow+1
+            console.log(`Removing lines from ${endRow} down to ${startRow + 1}`);
+            
+            // First, replace the content of the start row with our result
+            this.buffer.lines[startRow] = resultLine;
+            
+            // Then remove all the lines between startRow+1 and endRow (inclusive)
+            const linesToRemove = endRow - startRow;
+            if (linesToRemove > 0) {
+                console.log(`Removing ${linesToRemove} lines starting at index ${startRow + 1}`);
+                this.buffer.lines.splice(startRow + 1, linesToRemove);
+            }
+            
+            // Position cursor at the join point
+            this.cursor.row = startRow;
+            this.cursor.col = startCol;
+        }
+        
+        // Clear selection after deletion
+        this.selection.clear();
+        
+        // Show buffer content after deletion
+        console.log(`Buffer size AFTER: ${this.buffer.length} lines`);
+        console.log("BUFFER AFTER:");
+        for (let i = 0; i < this.buffer.length; i++) {
+            if (i >= Math.max(0, startRow - 1) && i <= Math.min(this.buffer.length - 1, startRow + 2)) {
+                console.log(`  Line ${i}: ${JSON.stringify(this.buffer.getLine(i).substring(0, 50))}${this.buffer.getLine(i).length > 50 ? "..." : ""}`);
+            }
+        }
+        console.log("========= END DELETION DEBUGGING =========");
+        
+        // Ensure cursor is visible
+        this.editorWindow.up(this.cursor);
+        this.editorWindow.down(this.buffer, this.cursor);
+        this.editorWindow.horizontal_scroll(this.cursor);
+        
+        return true;
+    }
+    
+    /**
+     * Replace selection with specified text
+     * @param {string} newText Text to insert in place of selection
+     * @returns {boolean} Whether replacement was performed
+     */
+    replaceSelection(newText) {
+        this.debugLog(`Replacing selection with text: "${newText}"`);
+        
+        // If no selection, just insert at cursor
+        if (!this.selection.active) {
+            this.debugLog("No active selection, inserting at cursor instead");
+            return this.insertTextAtCursor(newText);
+        }
+        
+        // Delete current selection
+        this.deleteSelection();
+        
+        // Insert new text at cursor position (where selection was)
+        return this.insertTextAtCursor(newText);
+    }
+    
+    /**
+     * Insert text at current cursor position, handling multiple characters
+     * and newlines appropriately
+     * @param {string} text Text to insert
+     * @returns {boolean} Whether insertion was successful
+     */
+    insertTextAtCursor(text) {
+        this.debugLog(`Inserting text at cursor: "${text}"`);
+        
+        if (!text || text.length === 0) {
+            return false;
+        }
+        
+        // Handle multi-line text
+        const lines = text.split('\n');
+        
+        // Insert first line
+        this.buffer.insert(this.cursor, lines[0]);
+        
+        // Move cursor to end of inserted text
+        for (let i = 0; i < lines[0].length; i++) {
+            editorRight(this.editorWindow, this.buffer, this.cursor);
+        }
+        
+        // Handle additional lines if present
+        for (let i = 1; i < lines.length; i++) {
+            // Insert line break
+            this.buffer.split(this.cursor);
+            editorRight(this.editorWindow, this.buffer, this.cursor);
+            
+            // Insert line content
+            if (lines[i].length > 0) {
+                this.buffer.insert(this.cursor, lines[i]);
+                
+                // Move cursor to end of this line
+                for (let j = 0; j < lines[i].length; j++) {
+                    editorRight(this.editorWindow, this.buffer, this.cursor);
+                }
+            }
+        }
+        
+        // Ensure cursor is visible
+        this.editorWindow.up(this.cursor);
+        this.editorWindow.down(this.buffer, this.cursor);
+        this.editorWindow.horizontal_scroll(this.cursor);
+        
+        return true;
+    }
 }

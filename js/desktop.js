@@ -37,6 +37,7 @@ let charWidth_px, charHeight_px;
 let clockUpdateInterval = null;
 let menuWidget;
 let charactersGridElement;
+let statusMessageTimer = null; // Timer for temporary status messages
 
 // Get random coordinates for a new widget, ensuring it fits within grid bounds
 function getRandomCoordinates(widgetWidth, widgetHeight) {
@@ -118,10 +119,32 @@ function createStatusTWidget() {
 }
 
 // Show a message in the status widget
-function showStatusMessage(message) {
-    if (statusWidget) {
-        const changed = statusWidget.setMessage(message);
-        if (changed) drawTWidgets();
+/**
+ * Show a status message with optional auto-clear
+ * @param {string} message Message to display
+ * @param {number} duration Duration in ms to show message (0 = permanent)
+ */
+function showStatusMessage(message, duration = 0) {
+    if (!statusWidget) return;
+    
+    console.log("Status message:", message);
+    
+    // Clear any existing timer
+    if (statusMessageTimer) {
+        clearTimeout(statusMessageTimer);
+        statusMessageTimer = null;
+    }
+    
+    // Update status message
+    const changed = statusWidget.setMessage(message);
+    if (changed) drawTWidgets();
+    
+    // Auto-clear after duration if specified
+    if (duration > 0) {
+        statusMessageTimer = setTimeout(() => {
+            showStatusMessage("");
+            statusMessageTimer = null;
+        }, duration);
     }
 }
 

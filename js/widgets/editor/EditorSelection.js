@@ -19,7 +19,10 @@ class EditorSelection {
      */
     log(...args) {
         if (this.debug) {
-            console.log("[EditorSelection]", ...args);
+            // Only log when specifically requested
+            if (args[0] === "IMPORTANT") {
+                console.log("[EditorSelection]", ...args.slice(1));
+            }
         }
     }
 
@@ -113,26 +116,36 @@ class EditorSelection {
         if (!this.active || !buffer) return "";
         
         const { startRow, startCol, endRow, endCol } = this.normalizedRange;
+        this.log("Getting selected text from:", startRow, startCol, "to", endRow, endCol);
+        
         let result = "";
         
         // Extract the selected text from the buffer
         if (startRow === endRow) {
             // Selection is on a single line
             result = buffer.getLine(startRow).substring(startCol, endCol);
+            this.log("Single-line selection, text:", result);
         } else {
             // Selection spans multiple lines
             // Get first line (partial)
-            result = buffer.getLine(startRow).substring(startCol) + "\\n";
+            const firstLine = buffer.getLine(startRow).substring(startCol);
+            result = firstLine + "\n";
+            this.log("First line of selection:", firstLine);
             
             // Get middle lines (full)
             for (let row = startRow + 1; row < endRow; row++) {
-                result += buffer.getLine(row) + "\\n";
+                const middleLine = buffer.getLine(row);
+                result += middleLine + "\n";
+                this.log("Middle line " + row + ":", middleLine);
             }
             
             // Get last line (partial)
-            result += buffer.getLine(endRow).substring(0, endCol);
+            const lastLine = buffer.getLine(endRow).substring(0, endCol);
+            result += lastLine;
+            this.log("Last line of selection:", lastLine);
         }
         
+        this.log("Full selected text:", result);
         return result;
     }
 
