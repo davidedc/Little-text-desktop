@@ -251,17 +251,22 @@ function handleMouseDown(e) {
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     const result = findWidgetAt(mouseX_chars, mouseY_chars);
     
+    console.log("Mouse down at:", mouseX_chars, mouseY_chars);
+    
     // Reset interaction state
     interactionState.reset();
 
     if (result) {
         const { widget } = result;
+        console.log("Mouse down on widget:", widget.constructor.name);
         
         // Start with assumption this is a simple click
         interactionState.startClick(widget, mouseX_chars, mouseY_chars);
+        console.log("Started click interaction on", widget.constructor.name);
         
         // Bring widget to front if not already active
         if (widget !== activeWidget) {
+            console.log("Bringing to front:", widget.constructor.name);
             bringToFrontAndFocus(widget);
             drawTWidgets();
         }
@@ -269,27 +274,35 @@ function handleMouseDown(e) {
         // Calculate relative coordinates within widget
         const innerX = mouseX_chars - widget.x;
         const innerY = mouseY_chars - widget.y;
+        console.log("Relative position within widget:", innerX, innerY);
         
         // Check for different interaction types in priority order
         if (tryHandleCloseButton(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+            console.log("Handled as close button click");
             return;
         }
         if (tryHandleScrollbar(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+            console.log("Handled as scrollbar interaction");
             return;
         }
         if (tryHandleResizeHandle(widget, mouseX_chars, mouseY_chars)) {
+            console.log("Handled as resize interaction");
             return;
         }
         if (tryHandleTitleBarDrag(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+            console.log("Handled as title bar drag");
             return;
         }
         if (tryHandleContentDrag(widget, mouseX_chars, mouseY_chars)) {
+            console.log("Handled as content drag");
             return;
         }
         
         // If we get here, it's a normal click that will be handled on mouseup
+        console.log("Normal click will be handled on mouse up");
         // The click state is already set in interactionState
     } else {
+        console.log("Mouse down on background");
         // Clicked on background
         handleBackgroundClick();
     }
@@ -327,6 +340,17 @@ function tryHandleScrollbar(widget, mouseX, mouseY, innerX, innerY) {
     let vScrollInfo = widget.getVerticalScrollbarInfo ? widget.getVerticalScrollbarInfo() : null;
     let hScrollInfo = widget.getHorizontalScrollbarInfo ? widget.getHorizontalScrollbarInfo() : null;
 
+    console.log("Trying scrollbar:", 
+               "Has vertical scrollbar:", !!vScrollInfo, 
+               "Has horizontal scrollbar:", !!hScrollInfo);
+               
+    if (vScrollInfo) {
+        console.log("Vertical scrollbar:", 
+                   "At position:", widget.x + widget.w - 2,
+                   "Thumb position:", vScrollInfo.thumbPosition,
+                   "Thumb size:", vScrollInfo.thumbSize);
+    }
+
     // Check if clicking vertical scrollbar thumb
     if (vScrollInfo && 
         mouseX === widget.x + widget.w - 2 && 
@@ -335,6 +359,7 @@ function tryHandleScrollbar(widget, mouseX, mouseY, innerX, innerY) {
         innerY >= vScrollInfo.thumbPosition && 
         innerY < vScrollInfo.thumbPosition + vScrollInfo.thumbSize) {
         
+        console.log("Starting vertical scrollbar drag");
         startScrollbarDrag(widget, 'vertical', mouseX, mouseY);
         return true;
     }
@@ -347,10 +372,12 @@ function tryHandleScrollbar(widget, mouseX, mouseY, innerX, innerY) {
         innerX >= hScrollInfo.thumbPosition && 
         innerX < hScrollInfo.thumbPosition + hScrollInfo.thumbSize) {
         
+        console.log("Starting horizontal scrollbar drag");
         startScrollbarDrag(widget, 'horizontal', mouseX, mouseY);
         return true;
     }
     
+    console.log("Not on scrollbar");
     return false;
 }
 
@@ -538,14 +565,22 @@ function handleWidgetDragMove(mouseX, mouseY) {
  */
 function handleMouseUp(e) {
     // If we're not in the middle of an interaction, nothing to do
-    if (!interactionState.isPressed) return;
+    if (!interactionState.isPressed) {
+        console.log("Mouse up: No interaction in progress");
+        return;
+    }
     
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
+    console.log("Mouse up at:", mouseX_chars, mouseY_chars, 
+                "Type:", interactionState.type,
+                "Target:", interactionState.targetWidget?.constructor.name);
     
     // Handle interaction completion based on type
     if (interactionState.isClicking()) {
+        console.log("Handling click completion");
         handleClickCompletion(mouseX_chars, mouseY_chars);
     } else {
+        console.log("Ending non-click interaction:", interactionState.type);
         // For other interaction types, just clean up
         endActiveInteraction();
     }
@@ -557,16 +592,27 @@ function handleMouseUp(e) {
 function handleClickCompletion(mouseX, mouseY) {
     const widget = interactionState.targetWidget;
     if (!widget) {
+        console.log("Click completion: No target widget");
         interactionState.endInteraction();
         return;
     }
     
+    console.log("Click completion on widget:", widget.constructor.name, "at", mouseX, mouseY);
     const result = findWidgetAt(mouseX, mouseY);
+    
+    if (!result) {
+        console.log("Click completion: No widget found at mouse up position");
+    } else {
+        console.log("Widget at mouse up:", result.widget.constructor.name);
+    }
     
     // Only trigger click if mouse up is on the same widget as mouse down
     if (result && result.widget === widget) {
+        console.log("Forwarding click to widget:", widget.constructor.name);
         widget.click(mouseX, mouseY);
         drawTWidgets();
+    } else {
+        console.log("Widget mismatch between mouse down and mouse up, not forwarding click");
     }
     
     interactionState.endInteraction();
@@ -703,6 +749,10 @@ function initializeSystem() {
 
     // Create initial editor and set up event listeners
     createEditor();
+    
+    // Uncomment the following line to enable scrolling debug logs
+    // tWidgets.forEach(w => { if (w instanceof TScrollableWidget) w.debugScrolling = true; });
+    
     drawTWidgets();
 
     charactersGridElement.addEventListener('mousedown', handleMouseDown);

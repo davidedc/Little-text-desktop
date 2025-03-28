@@ -1,5 +1,5 @@
 // --- TEditorWidget ---
-class TEditorWidget extends TWidget {
+class TEditorWidget extends TScrollableWidget {
     constructor(posX, posY, width, height, title, initialText = "") {
         super(posX, posY, width, height, title);
         this.buffer = new EditorBuffer(initialText.split('\n'));
@@ -77,7 +77,7 @@ class TEditorWidget extends TWidget {
 
     // Clear the content area of the editor window
     clearContents(a) {
-        const d = this._getContentDimensions();
+        const d = this.getContentDimensions();
         for (let j = this.y + 1; j < this.y + 1 + d.contentHeight; j++) {
             for (let i = this.x + 1; i < this.x + 1 + d.contentWidth; i++) {
                 if (j < GRID_HEIGHT_chars && i < GRID_WIDTH_chars) {
@@ -87,8 +87,11 @@ class TEditorWidget extends TWidget {
         }
     }
 
-    // Calculate dimensions of editor content area and determine if scrollbars are needed
-    _getContentDimensions() {
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Calculate dimensions of editor content area and determine if scrollbars are needed
+     */
+    getContentDimensions() {
         // Calculate maximum height and width without borders
         const maxHeight = Math.max(0, this.h - 2);
         const maxWidth = Math.max(0, this.w - 2);
@@ -127,19 +130,80 @@ class TEditorWidget extends TWidget {
         const contentWidth = Math.max(0, this.w - 2 - verticalScrollWidth);
         const contentHeight = Math.max(0, this.h - 2 - horizontalScrollHeight);
 
-        return {
+        const result = {
             vScrollNeeded: verticalNeeded,
             hScrollNeeded: horizontalNeeded, 
             contentWidth: contentWidth,
             contentHeight: contentHeight
         };
+
+        this.debugLog("Content dimensions:", result);
+        return result;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get total content size for vertical scrolling
+     */
+    getVerticalContentSize() {
+        return this.buffer.length;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get total content size for horizontal scrolling
+     */
+    getHorizontalContentSize() {
+        return this.buffer.maxLineLength;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get current vertical scroll position
+     */
+    getVerticalScrollPosition() {
+        return this.editorWindow.row;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get current horizontal scroll position
+     */
+    getHorizontalScrollPosition() {
+        return this.editorWindow.col;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Set vertical scroll position
+     */
+    setVerticalScrollPosition(position) {
+        if (this.editorWindow.row !== position) {
+            this.editorWindow.row = position;
+            this.resetCursorBlinkTimer();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Set horizontal scroll position
+     */
+    setHorizontalScrollPosition(position) {
+        if (this.editorWindow.col !== position) {
+            this.editorWindow.col = position;
+            this.resetCursorBlinkTimer();
+            return true;
+        }
+        return false;
     }
 
     draw_content(a) {
         // Get references to commonly used objects
         const win = this.editorWindow;
         const buf = this.buffer;
-        const dims = this._getContentDimensions();
+        const dims = this.getContentDimensions();
 
         // Set window dimensions
         win.n_rows = dims.contentHeight;
@@ -147,6 +211,8 @@ class TEditorWidget extends TWidget {
 
         // Calculate cursor position for drawing at the beginning
         const { rel_row: relRow, rel_col: relCol } = win.translate(this.cursor);
+
+        this.debugLog("Drawing content, cursor at rel:", relRow, relCol);
 
         // Draw editor content if there is space
         if (dims.contentWidth > 0 && dims.contentHeight > 0) {
@@ -174,6 +240,7 @@ class TEditorWidget extends TWidget {
                     
                     if (isCursorCell) {
                         // Use a styled cursor cell
+                        this.debugLog("Drawing cursor at", sx, sy);
                         setChar(a, sx, sy, Cell.cursor(ch, this.isCursorBlinking));
                     } else {
                         // Use a regular character
@@ -183,118 +250,12 @@ class TEditorWidget extends TWidget {
             }
         }
 
-        // Draw vertical scrollbar if needed
-        if (dims.vScrollNeeded) {
-            const scrollInfo = this.getVerticalScrollbarInfo();
-            if (scrollInfo) {
-                // Draw vertical track and thumb
-                for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
-                    const isThumb = (pos >= scrollInfo.thumbPosition && 
-                                   pos < scrollInfo.thumbPosition + scrollInfo.thumbSize);
-                    const char = isThumb ? '#' : '│';
-                    setChar(a, this.x + this.w - 2, this.y + 1 + pos, char);
-                }
-            }
-        }
-
-        // Draw horizontal scrollbar if needed  
-        if (dims.hScrollNeeded) {
-            const scrollInfo = this.getHorizontalScrollbarInfo();
-            if (scrollInfo) {
-                // Draw horizontal track and thumb
-                for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
-                    const isThumb = (pos >= scrollInfo.thumbPosition && 
-                                   pos < scrollInfo.thumbPosition + scrollInfo.thumbSize);
-                    const char = isThumb ? '#' : '─';
-                    setChar(a, this.x + 1 + pos, this.y + this.h - 2, char);
-                }
-            }
-        }
-
-        // Draw scrollbar corner intersection if both scrollbars present
-        if (dims.vScrollNeeded && dims.hScrollNeeded) {
-            setChar(a, this.x + this.w - 2, this.y + this.h - 2, '+');
-        }
+        // Use base class to draw scrollbars
+        this.drawScrollbars(a, dims);
     }
 
-    // Calculate vertical scrollbar info based on content dimensions and scroll position
-    getVerticalScrollbarInfo() {
-        const dims = this._getContentDimensions();
-        if (!dims.vScrollNeeded) return null;
-
-        const trackSize = dims.contentHeight;
-        const totalLines = this.buffer.length;
-        const visibleLines = trackSize;
-
-        const thumbSize = Math.max(1, Math.floor(trackSize * visibleLines / totalLines));
-        const maxThumbPos = trackSize - thumbSize;
-        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * this.editorWindow.row / totalLines));
-        const maxScrollOffset = totalLines - visibleLines;
-
-        return {
-            trackSize,
-            thumbSize,
-            thumbPosition: thumbPos,
-            totalLines,
-            visibleLines,
-            maxScrollOffset
-        };
-    }
-
-    // Calculate horizontal scrollbar info based on content dimensions and scroll position 
-    getHorizontalScrollbarInfo() {
-        const dims = this._getContentDimensions();
-        if (!dims.hScrollNeeded) return null;
-
-        const trackSize = dims.contentWidth;
-        const totalCols = this.buffer.maxLineLength;
-        const visibleCols = trackSize;
-
-        const thumbSize = Math.max(1, Math.floor(trackSize * visibleCols / totalCols));
-        const maxThumbPos = trackSize - thumbSize;
-        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * this.editorWindow.col / totalCols));
-        const maxScrollOffset = totalCols - visibleCols;
-
-        return {
-            trackSize,
-            thumbSize,
-            thumbPosition: thumbPos,
-            totalCols,
-            visibleCols,
-            maxScrollOffset
-        };
-    }
-
-    // Update scroll position for vertical or horizontal scrolling
-    updateScrollOffset(axis, newOffset) {
-        let changed = false;
-        
-        if (axis === 'vertical') {
-            const info = this.getVerticalScrollbarInfo();
-            if (info) {
-                const clampedOffset = clamp(Math.round(newOffset), 0, info.maxScrollOffset);
-                if (this.editorWindow.row !== clampedOffset) {
-                    this.editorWindow.row = clampedOffset;
-                    changed = true;
-                }
-            }
-        }
-        else if (axis === 'horizontal') {
-            const info = this.getHorizontalScrollbarInfo();
-            if (info) {
-                const clampedOffset = clamp(Math.round(newOffset), 0, info.maxScrollOffset);
-                if (this.editorWindow.col !== clampedOffset) {
-                    this.editorWindow.col = clampedOffset;
-                    changed = true;
-                }
-            }
-        }
-
-        if (changed) {
-            this.resetCursorBlinkTimer();
-        }
-        return changed;
-    }
+    // The following methods are now handled by TScrollableWidget
+    // We remove these implementations and use the base class versions
 
     // Handle keyboard input for editor navigation and text manipulation
     handleKeyPress(e) {
@@ -361,50 +322,38 @@ class TEditorWidget extends TWidget {
     // Handle mouse click for cursor positioning
     click(x, y) {
         super.click(x, y);
+        console.log("Editor click at", x, y);
         this.resetCursorBlinkTimer();
 
-        const dims = this._getContentDimensions();
+        const dims = this.getContentDimensions();
         const relX = x - this.x - 1;
         const relY = y - this.y - 1;
         const win = this.editorWindow;
+        
+        console.log("Editor content area:", dims.contentWidth, dims.contentHeight);
+        console.log("Relative click position:", relX, relY);
 
         if (relX >= 0 && relX < dims.contentWidth && relY >= 0 && relY < dims.contentHeight) {
             const targetRow = win.row + relY;
             const targetCol = win.col + relX;
+            
+            console.log("Setting cursor to buffer position:", targetRow, targetCol);
 
             this.cursor.row = clamp(targetRow, 0, this.buffer.bottom);
             const lineLength = this.buffer.getLine(this.cursor.row).length;
             this.cursor.col = clamp(targetCol, 0, lineLength);
+            
+            console.log("Final cursor position:", this.cursor.row, this.cursor.col);
 
             win.up(this.cursor);
             win.down(this.buffer, this.cursor);
             win.horizontal_scroll(this.cursor);
             drawTWidgets();
+        } else {
+            console.log("Click outside editor content area");
         }
     }
 
-    // Handle mouse wheel scrolling
-    scroll(delta) {
-        const info = this.getVerticalScrollbarInfo();
-        
-        // Special case: allow scrolling down even without scrollbar if there's content below
-        if (!info && delta > 0) {
-           if (this.buffer.length > 0 && this.editorWindow.row < this.buffer.bottom ) {
-              this.updateScrollOffset('vertical', this.editorWindow.row + 1);
-              drawTWidgets();
-              return true;
-           }
-           return false;
-        }
-
-        // No scrolling if no scrollbar
-        if (!info) return false;
-
-        const newOffset = this.editorWindow.row + Math.sign(delta);
-        const changed = this.updateScrollOffset('vertical', newOffset);
-        if (changed) {
-            drawTWidgets();
-        }
-        return changed;
-    }
+    // For scroll handling, we use the base class implementation
+    // from TScrollableWidget
 }

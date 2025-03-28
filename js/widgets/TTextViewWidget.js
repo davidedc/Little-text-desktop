@@ -1,5 +1,5 @@
 // TTextViewWidget: Displays scrollable text content
-class TTextViewWidget extends TWidget {
+class TTextViewWidget extends TScrollableWidget {
     constructor(posX, posY, width, height, title, content) {
         super(posX, posY, width, height, title);
         this.content = content;
@@ -20,11 +20,12 @@ class TTextViewWidget extends TWidget {
             this.linesCache = wrapText(this.content, availableWidth);
             this.lastContent = this.content;
             this.lastWidth = availableWidth;
+            this.debugLog("Updated lines cache, now", this.linesCache.length, "lines");
         }
     }
 
     clearContents(charGrid) {
-        const dimensions = this._getContentDimensions();
+        const dimensions = this.getContentDimensions();
         for (let rowIndex = this.y + 1; rowIndex < this.y + 1 + dimensions.contentHeight; rowIndex++) {
             for (let colIndex = this.x + 1; colIndex < this.x + 1 + dimensions.contentWidth; colIndex++) {
                 if (rowIndex < GRID_HEIGHT_chars && colIndex < GRID_WIDTH_chars) {
@@ -34,7 +35,11 @@ class TTextViewWidget extends TWidget {
         }
     }
 
-    _getContentDimensions() {
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Calculate dimensions of text view content area and determine if scrollbars are needed
+     */
+    getContentDimensions() {
         this._updateLinesCache();
         const maxHeight = Math.max(0, this.h - 2);
         const needsVerticalScroll = this.linesCache.length > maxHeight && 
@@ -43,18 +48,52 @@ class TTextViewWidget extends TWidget {
         const contentWidth = Math.max(0, this.w - 2 - verticalScrollWidth);
         const contentHeight = maxHeight;
 
-        return {
+        const result = {
             vScrollNeeded: needsVerticalScroll,
+            hScrollNeeded: false, // TextView doesn't support horizontal scrolling
             contentWidth: contentWidth,
             contentHeight: contentHeight
         };
+        
+        this.debugLog("Content dimensions:", result);
+        return result;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get total content size for vertical scrolling
+     */
+    getVerticalContentSize() {
+        return this.linesCache ? this.linesCache.length : 0;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Get current vertical scroll position
+     */
+    getVerticalScrollPosition() {
+        return this.scrollOffset;
+    }
+    
+    /**
+     * Implementation of TScrollableWidget abstract method
+     * Set vertical scroll position
+     */
+    setVerticalScrollPosition(position) {
+        if (this.scrollOffset !== position) {
+            this.scrollOffset = position;
+            return true;
+        }
+        return false;
     }
 
     draw_content(charGrid) {
-        const dimensions = this._getContentDimensions();
+        const dimensions = this.getContentDimensions();
         const lines = this.linesCache;
 
         if (dimensions.contentWidth <= 0 || dimensions.contentHeight <= 0) return;
+
+        this.debugLog("Drawing text content, scroll offset:", this.scrollOffset);
 
         // Draw text content
         for (let rowIndex = 0; rowIndex < dimensions.contentHeight; rowIndex++) {
@@ -75,26 +114,8 @@ class TTextViewWidget extends TWidget {
             }
         }
 
-        // Draw scrollbar if needed
-        if (dimensions.vScrollNeeded) {
-            this.drawScrollbar(charGrid, lines.length, dimensions.contentHeight);
-        }
-    }
-
-    drawScrollbar(charGrid, totalLines, viewportHeight) {
-        const scrollbarHeight = viewportHeight;
-        const scrollbarX = this.x + this.w - 2;
-
-        if (scrollbarHeight <= 0) return;
-
-        const thumbSize = Math.max(1, Math.floor(scrollbarHeight * viewportHeight / totalLines));
-        const maxThumbPos = scrollbarHeight - thumbSize;
-        const thumbPos = Math.min(maxThumbPos, Math.floor(scrollbarHeight * this.scrollOffset / totalLines));
-
-        for (let posIndex = 0; posIndex < scrollbarHeight; posIndex++) {
-            const scrollChar = (posIndex >= thumbPos && posIndex < thumbPos + thumbSize) ? '#' : '│';
-            setChar(charGrid, scrollbarX, this.y + 1 + posIndex, scrollChar);
-        }
+        // Use base class to draw scrollbars
+        this.drawScrollbars(charGrid, dimensions);
     }
 
     updateDimensions(newWidth, newHeight) {
@@ -102,56 +123,13 @@ class TTextViewWidget extends TWidget {
         this.linesCache = null;
         this.lastWidth = null;
 
-        const dimensions = this._getContentDimensions();
+        const dimensions = this.getContentDimensions();
         const maxScroll = Math.max(0, (this.linesCache?.length || 0) - dimensions.contentHeight);
         this.scrollOffset = clamp(this.scrollOffset, 0, maxScroll);
+        
+        this.debugLog("Updated dimensions, new scroll offset:", this.scrollOffset);
     }
-
-    getVerticalScrollbarInfo() {
-        const dimensions = this._getContentDimensions();
-        if (!dimensions.vScrollNeeded) return null;
-
-        const trackSize = dimensions.contentHeight;
-        const totalLines = this.linesCache.length;
-        const visibleLines = trackSize;
-        const thumbSize = Math.max(1, Math.floor(trackSize * visibleLines / totalLines));
-        const maxThumbPos = trackSize - thumbSize;
-        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * this.scrollOffset / totalLines));
-        const maxScrollOffset = totalLines - visibleLines;
-
-        return {
-            trackSize,
-            thumbSize,
-            thumbPosition: thumbPos,
-            totalLines,
-            visibleLines,
-            maxScrollOffset
-        };
-    }
-
-    updateScrollOffset(axis, newOffset) {
-        if (axis === 'vertical') {
-            const info = this.getVerticalScrollbarInfo();
-            if (info) {
-                const clampedOffset = clamp(Math.round(newOffset), 0, info.maxScrollOffset);
-                if (this.scrollOffset !== clampedOffset) {
-                    this.scrollOffset = clampedOffset;
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    scroll(delta) {
-        const info = this.getVerticalScrollbarInfo();
-        if (!info) return false;
-
-        const newOffset = this.scrollOffset + Math.sign(delta);
-        const changed = this.updateScrollOffset('vertical', newOffset);
-        if (changed) {
-            drawTWidgets();
-        }
-        return changed;
-    }
+    
+    // The following methods are now handled by TScrollableWidget
+    // We remove these implementations and use the base class versions
 }

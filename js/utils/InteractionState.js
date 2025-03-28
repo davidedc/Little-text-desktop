@@ -102,6 +102,8 @@ class InteractionState {
      * @returns {boolean} True if currently clicking
      */
     isClicking() {
+        console.log("Checking click state:", this.isPressed, this.type, 
+                   (this.isPressed && this.type === 'click'));
         return this.isPressed && this.type === 'click';
     }
 
