@@ -1,0 +1,52 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
+#characters-grid {
+    width: 100%;
+    height: 100%;
+    background-color: white;
+    overflow: hidden;
+    font-family: monospace;
+    white-space: pre;
+    line-height: 1; /* Consistent line height */
+    font-size: 14px;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+.resize-handle {
+    color: red;
+    display: inline-block;
+    width: 1ch;
+    text-align: center;
+}
+/* Base Cursor Style (Solid) */
+.cursor {
+  background-color: black;
+  color: white;
+  min-width: 1ch;
+  outline: 1px dotted rgba(0,0,0,0.3);
+  box-sizing: border-box;
+}
+/* Blinking Animation */
+@keyframes blink {
+  50% {
+    background-color: transparent;
+    color: initial;
+    outline-color: transparent;
+  }
+}
+/* Class to apply blinking */
+.cursor-blink {
+  animation: blink 1s step-start infinite;
+}
+/* Style for Close Button */
+.close-button {
+    color: red;
+    font-weight: bold;
+}

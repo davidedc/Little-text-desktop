@@ -1,0 +1,411 @@
+// --- TEditorWidget ---
+class TEditorWidget extends TWidget {
+    constructor(posX, posY, width, height, title, initialText = "") {
+        super(posX, posY, width, height, title);
+        this.buffer = new EditorBuffer(initialText.split('\n'));
+        this.cursor = new EditorCursor();
+        const contentWidth = Math.max(1, this.w - 3);
+        const contentHeight = Math.max(1, this.h - 3);
+        this.editorWindow = new EditorWindow(contentHeight, contentWidth);
+        this.cursorScreenPos = { x: -1, y: -1 };
+        this.isCursorBlinking = false; 
+        this.cursorBlinkTimer = null;
+    }
+
+    // Handle gaining focus - reset cursor blinking state and start blink timer
+    gainFocus() {
+        super.gainFocus();
+        this.isCursorBlinking = false;
+        this.resetCursorBlinkTimer();
+    }
+
+    // Handle losing focus - clean up cursor blinking timer and state
+    loseFocus() {
+        super.loseFocus();
+        clearTimeout(this.cursorBlinkTimer);
+        this.cursorBlinkTimer = null;
+        this.isCursorBlinking = false;
+    }
+
+    // Reset the cursor blink timer and handle redraw logic
+    resetCursorBlinkTimer() {
+        // Clear any existing blink timer
+        clearTimeout(this.cursorBlinkTimer);
+        this.cursorBlinkTimer = null;
+
+        // Check if we need to redraw based on previous blink state
+        const needsRedraw = this.isCursorBlinking;
+        this.isCursorBlinking = false;
+
+        // Redraw if needed and has focus
+        if (needsRedraw && this.hasFocus) {
+            drawTWidgets();
+        }
+
+        // Start new blink timer if focused
+        if (this.hasFocus) {
+            this.cursorBlinkTimer = setTimeout(() => {
+                this.isCursorBlinking = true;
+                this.cursorBlinkTimer = null;
+                
+                // Only redraw if focused and cursor is visible
+                if (this.hasFocus && this.cursorScreenPos.x !== -1) {
+                    drawTWidgets();
+                }
+            }, CURSOR_BLINK_DELAY);
+        }
+    }
+
+    // Update dimensions of editor window and adjust cursor/scroll position
+    updateDimensions(w, h) {
+        super.updateDimensions(w, h);
+        // Calculate content dimensions accounting for borders
+        const cW = Math.max(1, this.w - 3);
+        const cH = Math.max(1, this.h - 3);
+        
+        // Update editor window dimensions
+        this.editorWindow.n_rows = cH;
+        this.editorWindow.n_cols = cW;
+        
+        // Ensure cursor stays within valid bounds
+        this.cursor.row = clamp(this.cursor.row, 0, this.buffer.bottom);
+        this.cursor._clamp_col(this.buffer);
+        
+        // Adjust scroll position based on cursor
+        this.editorWindow.down(this.buffer, this.cursor);
+        this.editorWindow.horizontal_scroll(this.cursor);
+    }
+
+    // Clear the content area of the editor window
+    clearContents(a) {
+        const d = this._getContentDimensions();
+        for (let j = this.y + 1; j < this.y + 1 + d.contentHeight; j++) {
+            for (let i = this.x + 1; i < this.x + 1 + d.contentWidth; i++) {
+                if (j < GRID_HEIGHT_chars && i < GRID_WIDTH_chars) {
+                    setChar(a, i, j, ' ');
+                }
+            }
+        }
+    }
+
+    // Calculate dimensions of editor content area and determine if scrollbars are needed
+    _getContentDimensions() {
+        // Calculate maximum height and width without borders
+        const maxHeight = Math.max(0, this.h - 2);
+        const maxWidth = Math.max(0, this.w - 2);
+
+        // Check if vertical scrollbar might be needed initially
+        const verticalPossiblyNeeded = this.buffer.length > maxHeight && 
+                                     maxWidth > 0 && 
+                                     maxHeight > 0;
+
+        // Check if horizontal scrollbar might be needed initially  
+        const horizontalPossiblyNeeded = this.buffer.maxLineLength > maxWidth && 
+                                       maxWidth > 0 && 
+                                       maxHeight > 0;
+
+        // Adjust height for horizontal scrollbar if needed
+        const heightForVertical = maxHeight - (horizontalPossiblyNeeded ? 1 : 0);
+
+        // Final check if vertical scrollbar is needed with adjusted height
+        const verticalNeeded = this.buffer.length > heightForVertical && 
+                             maxWidth > 0 && 
+                             heightForVertical > 0;
+
+        // Adjust width for vertical scrollbar if needed
+        const widthForHorizontal = maxWidth - (verticalPossiblyNeeded ? 1 : 0);
+
+        // Final check if horizontal scrollbar is needed with adjusted width
+        const horizontalNeeded = this.buffer.maxLineLength > widthForHorizontal && 
+                               widthForHorizontal > 0 && 
+                               maxHeight > 0;
+
+        // Calculate scrollbar dimensions
+        const verticalScrollWidth = verticalNeeded ? 1 : 0;
+        const horizontalScrollHeight = horizontalNeeded ? 1 : 0;
+
+        // Calculate final content dimensions accounting for scrollbars
+        const contentWidth = Math.max(0, this.w - 2 - verticalScrollWidth);
+        const contentHeight = Math.max(0, this.h - 2 - horizontalScrollHeight);
+
+        return {
+            vScrollNeeded: verticalNeeded,
+            hScrollNeeded: horizontalNeeded, 
+            contentWidth: contentWidth,
+            contentHeight: contentHeight
+        };
+    }
+
+    draw_content(a) {
+        // Get references to commonly used objects
+        const win = this.editorWindow;
+        const buf = this.buffer;
+        const dims = this._getContentDimensions();
+
+        // Set window dimensions
+        win.n_rows = dims.contentHeight;
+        win.n_cols = dims.contentWidth;
+
+        // Draw editor content if there is space
+        if (dims.contentWidth > 0 && dims.contentHeight > 0) {
+            for (let rr = 0; rr < dims.contentHeight; rr++) {
+                // Get line content, handling out of bounds
+                const br = win.row + rr;
+                let l = (br >= 0 && br < buf.length) ? buf.getLine(br) : "";
+
+                // Apply horizontal scroll and width limits
+                l = l.substring(win.col);
+                if (l.length > dims.contentWidth) {
+                    l = l.substring(0, dims.contentWidth);
+                }
+
+                // Draw line characters
+                const sy = this.y + 1 + rr;
+                for (let rc = 0; rc < dims.contentWidth; rc++) {
+                    const sx = this.x + 1 + rc;
+                    const ch = rc < l.length ? l[rc] : ' ';
+                    setChar(a, sx, sy, ch);
+                }
+            }
+        }
+
+        // Draw vertical scrollbar if needed
+        if (dims.vScrollNeeded) {
+            const scrollInfo = this.getVerticalScrollbarInfo();
+            if (scrollInfo) {
+                // Draw vertical track and thumb
+                for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
+                    const isThumb = (pos >= scrollInfo.thumbPosition && 
+                                   pos < scrollInfo.thumbPosition + scrollInfo.thumbSize);
+                    const char = isThumb ? '#' : '│';
+                    setChar(a, this.x + this.w - 2, this.y + 1 + pos, char);
+                }
+            }
+        }
+
+        // Draw horizontal scrollbar if needed  
+        if (dims.hScrollNeeded) {
+            const scrollInfo = this.getHorizontalScrollbarInfo();
+            if (scrollInfo) {
+                // Draw horizontal track and thumb
+                for (let pos = 0; pos < scrollInfo.trackSize; pos++) {
+                    const isThumb = (pos >= scrollInfo.thumbPosition && 
+                                   pos < scrollInfo.thumbPosition + scrollInfo.thumbSize);
+                    const char = isThumb ? '#' : '─';
+                    setChar(a, this.x + 1 + pos, this.y + this.h - 2, char);
+                }
+            }
+        }
+
+        // Draw scrollbar corner intersection if both scrollbars present
+        if (dims.vScrollNeeded && dims.hScrollNeeded) {
+            setChar(a, this.x + this.w - 2, this.y + this.h - 2, '+');
+        }
+
+        // Update cursor position based on window translation
+        const { rel_row: relRow, rel_col: relCol } = win.translate(this.cursor);
+        
+        // Only show cursor if in focus and within visible content area
+        if (this.hasFocus && 
+            relRow >= 0 && relRow < dims.contentHeight &&
+            relCol >= 0 && relCol < dims.contentWidth) {
+            this.cursorScreenPos = {
+                x: this.x + 1 + relCol,
+                y: this.y + 1 + relRow
+            };
+        } else {
+            this.cursorScreenPos = { x: -1, y: -1 };
+        }
+    }
+
+    // Calculate vertical scrollbar info based on content dimensions and scroll position
+    getVerticalScrollbarInfo() {
+        const dims = this._getContentDimensions();
+        if (!dims.vScrollNeeded) return null;
+
+        const trackSize = dims.contentHeight;
+        const totalLines = this.buffer.length;
+        const visibleLines = trackSize;
+
+        const thumbSize = Math.max(1, Math.floor(trackSize * visibleLines / totalLines));
+        const maxThumbPos = trackSize - thumbSize;
+        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * this.editorWindow.row / totalLines));
+        const maxScrollOffset = totalLines - visibleLines;
+
+        return {
+            trackSize,
+            thumbSize,
+            thumbPosition: thumbPos,
+            totalLines,
+            visibleLines,
+            maxScrollOffset
+        };
+    }
+
+    // Calculate horizontal scrollbar info based on content dimensions and scroll position 
+    getHorizontalScrollbarInfo() {
+        const dims = this._getContentDimensions();
+        if (!dims.hScrollNeeded) return null;
+
+        const trackSize = dims.contentWidth;
+        const totalCols = this.buffer.maxLineLength;
+        const visibleCols = trackSize;
+
+        const thumbSize = Math.max(1, Math.floor(trackSize * visibleCols / totalCols));
+        const maxThumbPos = trackSize - thumbSize;
+        const thumbPos = Math.min(maxThumbPos, Math.floor(trackSize * this.editorWindow.col / totalCols));
+        const maxScrollOffset = totalCols - visibleCols;
+
+        return {
+            trackSize,
+            thumbSize,
+            thumbPosition: thumbPos,
+            totalCols,
+            visibleCols,
+            maxScrollOffset
+        };
+    }
+
+    // Update scroll position for vertical or horizontal scrolling
+    updateScrollOffset(axis, newOffset) {
+        let changed = false;
+        
+        if (axis === 'vertical') {
+            const info = this.getVerticalScrollbarInfo();
+            if (info) {
+                const clampedOffset = clamp(Math.round(newOffset), 0, info.maxScrollOffset);
+                if (this.editorWindow.row !== clampedOffset) {
+                    this.editorWindow.row = clampedOffset;
+                    changed = true;
+                }
+            }
+        }
+        else if (axis === 'horizontal') {
+            const info = this.getHorizontalScrollbarInfo();
+            if (info) {
+                const clampedOffset = clamp(Math.round(newOffset), 0, info.maxScrollOffset);
+                if (this.editorWindow.col !== clampedOffset) {
+                    this.editorWindow.col = clampedOffset;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            this.resetCursorBlinkTimer();
+        }
+        return changed;
+    }
+
+    // Handle keyboard input for editor navigation and text manipulation
+    handleKeyPress(e) {
+        let handled = true;
+        const key = e.key;
+        const win = this.editorWindow;
+        const buf = this.buffer;
+        const cur = this.cursor;
+
+        this.resetCursorBlinkTimer();
+
+        // Ensure cursor stays within valid bounds
+        cur.row = clamp(cur.row, 0, buf.bottom);
+        cur._clamp_col(buf);
+        win.down(buf, cur);
+        win.horizontal_scroll(cur);
+
+        if (key === "ArrowLeft") {
+            editorLeft(win, buf, cur);
+        }
+        else if (key === "ArrowRight") {
+            editorRight(win, buf, cur);
+        }
+        else if (key === "ArrowUp") {
+            cur.up(buf);
+            win.up(cur);
+            win.horizontal_scroll(cur);
+        }
+        else if (key === "ArrowDown") {
+            cur.down(buf);
+            win.down(buf, cur);
+            win.horizontal_scroll(cur);
+        }
+        else if (key === "Enter") {
+            buf.split(cur);
+            editorRight(win, buf, cur);
+        }
+        else if (key === "Backspace") {
+            if (cur.row > 0 || cur.col > 0) {
+                editorLeft(win, buf, cur);
+                buf.delete(cur);
+            }
+        }
+        else if (key === "Delete" || (e.ctrlKey && key === 'd')) {
+            buf.delete(cur);
+        }
+        else if (key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            buf.insert(cur, key);
+            for (let i = 0; i < key.length; i++) {
+                editorRight(win, buf, cur);
+            }
+        }
+        else {
+            handled = false;
+        }
+
+        if (handled) {
+            e.preventDefault();
+            drawTWidgets();
+        }
+        return handled;
+    }
+
+    // Handle mouse click for cursor positioning
+    click(x, y) {
+        super.click(x, y);
+        this.resetCursorBlinkTimer();
+
+        const dims = this._getContentDimensions();
+        const relX = x - this.x - 1;
+        const relY = y - this.y - 1;
+        const win = this.editorWindow;
+
+        if (relX >= 0 && relX < dims.contentWidth && relY >= 0 && relY < dims.contentHeight) {
+            const targetRow = win.row + relY;
+            const targetCol = win.col + relX;
+
+            this.cursor.row = clamp(targetRow, 0, this.buffer.bottom);
+            const lineLength = this.buffer.getLine(this.cursor.row).length;
+            this.cursor.col = clamp(targetCol, 0, lineLength);
+
+            win.up(this.cursor);
+            win.down(this.buffer, this.cursor);
+            win.horizontal_scroll(this.cursor);
+            drawTWidgets();
+        }
+    }
+
+    // Handle mouse wheel scrolling
+    scroll(delta) {
+        const info = this.getVerticalScrollbarInfo();
+        
+        // Special case: allow scrolling down even without scrollbar if there's content below
+        if (!info && delta > 0) {
+           if (this.buffer.length > 0 && this.editorWindow.row < this.buffer.bottom ) {
+              this.updateScrollOffset('vertical', this.editorWindow.row + 1);
+              drawTWidgets();
+              return true;
+           }
+           return false;
+        }
+
+        // No scrolling if no scrollbar
+        if (!info) return false;
+
+        const newOffset = this.editorWindow.row + Math.sign(delta);
+        const changed = this.updateScrollOffset('vertical', newOffset);
+        if (changed) {
+            drawTWidgets();
+        }
+        return changed;
+    }
+}
