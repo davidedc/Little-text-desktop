@@ -740,19 +740,12 @@ class TEditorWidget extends TScrollableWidget {
 
             // --- Handle Character Input / Simple Edits First ---
             if (key.length === 1 && !isMetaPressed && !e.ctrlKey && !e.altKey) {
-                 console.log("[DEBUG] Character input in wrapped mode:", key, "cursor:", this.cursor.row, this.cursor.col);
-                 try {
-                     if (this.selection.active) {
-                         this.replaceSelection(key);
-                     } else {
-                         this.insertTextAtCursor(key);
-                     }
-                     console.log("[DEBUG] After insertion, cursor:", this.cursor.row, this.cursor.col);
-                 } catch (err) {
-                     console.error("[ERROR] Error during character insertion:", err);
+                 if (this.selection.active) {
+                     this.replaceSelection(key);
+                 } else {
+                     this.insertTextAtCursor(key);
                  }
                  targetLogicalPos = {row: this.cursor.row, col: this.cursor.col }; // Update from insertion
-                 console.log("[DEBUG] targetLogicalPos:", targetLogicalPos);
                  preserveColHint = false; // Reset hint on typing
                  bufferModified = true;
             } else if (key === "Enter") {
@@ -870,54 +863,36 @@ class TEditorWidget extends TScrollableWidget {
             }
 
             // --- Update state after action (Wrapped) ---
-            console.log("[DEBUG] After action - handled:", handled, "targetLogicalPos:", targetLogicalPos);
-            
             if(handled && targetLogicalPos) {
-                 try {
-                     console.log("[DEBUG] Updating cursor to:", targetLogicalPos);
-                     
-                     // Set new cursor logical position - check for correct property names
-                     if (targetLogicalPos.logicalRow !== undefined) {
-                         this.cursor.row = targetLogicalPos.logicalRow;
-                     } else if (targetLogicalPos.row !== undefined) {
-                         this.cursor.row = targetLogicalPos.row;
-                     } else {
-                         console.error("[ERROR] targetLogicalPos missing row property:", targetLogicalPos);
+                 // Set new cursor logical position - check for correct property names
+                 if (targetLogicalPos.logicalRow !== undefined) {
+                     this.cursor.row = targetLogicalPos.logicalRow;
+                 } else if (targetLogicalPos.row !== undefined) {
+                     this.cursor.row = targetLogicalPos.row;
+                 }
+                 
+                 // Set column, preserving hint only if appropriate
+                 if (preserveColHint) {
+                     const rowToUse = this.cursor.row;
+                     // Safety check
+                     if (rowToUse >= 0 && rowToUse < this.buffer.length) {
+                         const lineLen = this.buffer.getLine(rowToUse).length;
+                         // Use hint for Y pos, but clamp X based on visual mapping result
+                         const colToUse = targetLogicalPos.logicalCol !== undefined ? 
+                                         targetLogicalPos.logicalCol : 
+                                         targetLogicalPos.col;
+                         
+                         this.cursor._col = clamp(colToUse, 0, lineLen);
+                         // col_hint remains the same during vertical movement
                      }
-                     
-                     // Set column, preserving hint only if appropriate
-                     if (preserveColHint) {
-                          console.log("[DEBUG] Preserving column hint");
-                          const rowToUse = this.cursor.row;
-                          // Safety check
-                          if (rowToUse >= 0 && rowToUse < this.buffer.length) {
-                              const lineLen = this.buffer.getLine(rowToUse).length;
-                              // Use hint for Y pos, but clamp X based on visual mapping result
-                              const colToUse = targetLogicalPos.logicalCol !== undefined ? 
-                                              targetLogicalPos.logicalCol : 
-                                              targetLogicalPos.col;
-                              
-                              this.cursor._col = clamp(colToUse, 0, lineLen);
-                              // col_hint remains the same during vertical movement
-                          } else {
-                              console.error("[ERROR] Invalid row for buffer:", rowToUse, "buffer length:", this.buffer.length);
-                          }
-                     } else {
-                          console.log("[DEBUG] Updating column directly");
-                          const colToUse = targetLogicalPos.logicalCol !== undefined ? 
-                                          targetLogicalPos.logicalCol : 
-                                          targetLogicalPos.col;
-                                          
-                          if (colToUse !== undefined) {
-                              this.cursor.col = colToUse; // Updates hint automatically
-                          } else {
-                              console.error("[ERROR] targetLogicalPos missing col property:", targetLogicalPos);
-                          }
+                 } else {
+                     const colToUse = targetLogicalPos.logicalCol !== undefined ? 
+                                     targetLogicalPos.logicalCol : 
+                                     targetLogicalPos.col;
+                                     
+                     if (colToUse !== undefined) {
+                         this.cursor.col = colToUse; // Updates hint automatically
                      }
-                     
-                     console.log("[DEBUG] Cursor after update:", this.cursor.row, this.cursor.col);
-                 } catch (err) {
-                     console.error("[ERROR] Exception while updating cursor position:", err);
                  }
 
                  // Update selection if Shift is pressed
@@ -1381,44 +1356,30 @@ class TEditorWidget extends TScrollableWidget {
         return this.insertTextAtCursor(newText); // Handles bufferVersion/cache/redraw trigger
      }
      insertTextAtCursor(text) {
-         console.log("[DEBUG] insertTextAtCursor - text:", text, "cursor:", this.cursor ? `row:${this.cursor.row}, col:${this.cursor.col}` : "null");
-         
          if (!text && text !== "") return false; // Allow inserting empty string? No.
 
          const lines = text.split('\n');
          const win = this.editorWindow; // Still needed for editorRight
          const buf = this.buffer;
          const cur = this.cursor;
-         
-         console.log("[DEBUG] insertTextAtCursor - buffer:", buf ? "exists" : "null", "cursor:", cur ? "exists" : "null");
 
-         try {
-             // Insert first line part
-             if(lines[0].length > 0) {
-                 console.log("[DEBUG] inserting first line:", lines[0]);
-                 buf.insert(cur, lines[0]);
-                 for (let i = 0; i < lines[0].length; i++) {
-                     console.log("[DEBUG] moving cursor right, i:", i);
-                     editorRight(win, buf, cur); // Use logical move
-                 }
+         // Insert first line part
+         if(lines[0].length > 0) {
+             buf.insert(cur, lines[0]);
+             for (let i = 0; i < lines[0].length; i++) {
+                 editorRight(win, buf, cur); // Use logical move
              }
-    
-             // Handle subsequent lines (newlines)
-             for (let i = 1; i < lines.length; i++) {
-                 console.log("[DEBUG] processing line", i);
-                 buf.split(cur); // Split line at cursor
-                 editorRight(win, buf, cur); // Move to start of new line
-                 if (lines[i].length > 0) { // Insert content of the new line
-                     buf.insert(cur, lines[i]);
-                     for (let j = 0; j < lines[i].length; j++) editorRight(win, buf, cur);
-                 }
-             }
-         } catch (err) {
-             console.error("[ERROR] Exception in insertTextAtCursor:", err);
-             // Don't rethrow, try to continue
          }
-         
-         console.log("[DEBUG] insertTextAtCursor - final cursor pos:", this.cursor.row, this.cursor.col);
+
+         // Handle subsequent lines (newlines)
+         for (let i = 1; i < lines.length; i++) {
+             buf.split(cur); // Split line at cursor
+             editorRight(win, buf, cur); // Move to start of new line
+             if (lines[i].length > 0) { // Insert content of the new line
+                 buf.insert(cur, lines[i]);
+                 for (let j = 0; j < lines[i].length; j++) editorRight(win, buf, cur);
+             }
+         }
          
          this.bufferVersion++; // Mark buffer modified
          if (this.wordWrapEnabled) {

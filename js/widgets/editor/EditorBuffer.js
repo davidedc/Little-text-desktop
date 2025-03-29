@@ -20,19 +20,13 @@ class EditorBuffer {
     }
 
     insert(cursor, string) {
-        console.log("[DEBUG] insert - cursor:", cursor ? `row:${cursor.row}, col:${cursor.col}` : "null", "string:", string);
-        
         // Ensure cursor exists
         if (!cursor) {
-            console.error("[ERROR] insert - cursor is null or undefined");
             return;
         }
         
         const row = cursor.row;
         const col = cursor.col;
-        
-        // Debug for specific issues
-        console.log("[DEBUG] insert - buffer.lines:", this.lines ? `length:${this.lines.length}` : "null");
         
         // Ensure the row exists in the buffer
         while (row >= this.lines.length) {
@@ -41,11 +35,9 @@ class EditorBuffer {
         
         // Get the current line (now guaranteed to exist)
         let current = this.lines[row];
-        console.log("[DEBUG] insert - current line:", current);
         
         // Ensure current is a string (defensive programming)
         if (typeof current !== 'string') {
-            console.error("[ERROR] insert - current line is not a string:", current);
             current = "";
             this.lines[row] = current;
         }
@@ -53,7 +45,6 @@ class EditorBuffer {
         const safeCol = clamp(col, 0, current.length);
         const newLine = current.slice(0, safeCol) + string + current.slice(safeCol);
         this.lines[row] = newLine;
-        console.log("[DEBUG] insert - success, new line:", newLine);
     }
 
     split(cursor) {
