@@ -1,7 +1,9 @@
 // --- TEditorWidget ---
 class TEditorWidget extends TScrollableWidget {
     constructor(posX, posY, width, height, title, initialText = "") {
+        // Call super with the original title, without any word wrap indicators
         super(posX, posY, width, height, title);
+        
         this.buffer = new EditorBuffer(initialText.split('\n'));
         this.cursor = new EditorCursor();
 
