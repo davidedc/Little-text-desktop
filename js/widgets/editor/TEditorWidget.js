@@ -41,7 +41,9 @@ class TEditorWidget extends TScrollableWidget {
     // --- Word Wrap Toggle ---
 
     toggleWordWrap() {
+        console.log("toggleWordWrap called, current state:", this.wordWrapEnabled);
         this.wordWrapEnabled = !this.wordWrapEnabled;
+        console.log("New word wrap state:", this.wordWrapEnabled);
         this.debugLog(`Word Wrap ${this.wordWrapEnabled ? 'Enabled' : 'Disabled'}`);
         this.invalidateVisualLayoutCache(); // Clear cache on toggle
 
@@ -698,6 +700,7 @@ class TEditorWidget extends TScrollableWidget {
         const key = e.key;
         const isShiftPressed = e.shiftKey;
         const isMetaPressed = e[this.META_KEY];
+        const isAltPressed = e.altKey;
 
         this.resetCursorBlinkTimer();
 
@@ -714,6 +717,24 @@ class TEditorWidget extends TScrollableWidget {
         const oldCol = this.cursor.col;
         let selectionStarted = false; // Track if selection begins in this event
         let bufferModified = false; // Track if buffer content changed
+
+        // --- Alt+W Toggle Word Wrap ---
+        // Check for Alt+W in multiple ways to support different platforms
+        // 1. Standard way: Alt key + 'w'/'W'
+        // 2. MacOS way: Alt+W produces "∑" character
+        // 3. Code-based detection: Alt key + code "KeyW"
+        if ((isAltPressed && (key === 'w' || key === 'W')) || 
+            (key === '∑') ||  // MacOS Alt+W produces this character
+            (isAltPressed && e.code === 'KeyW')) {
+            
+            console.log(`Alt+W detected! key=${key}, altKey=${isAltPressed}, code=${e.code}, keyCode=${e.keyCode}`);
+            e.preventDefault();
+            console.log("Before toggle - wordWrapEnabled:", this.wordWrapEnabled);
+            this.toggleWordWrap();
+            console.log("After toggle - wordWrapEnabled:", this.wordWrapEnabled);
+            showStatusMessage(`Word Wrap ${this.wordWrapEnabled ? 'Enabled' : 'Disabled'}`, 2000);
+            return true;
+        }
 
         // --- Clipboard ---
         if (isMetaPressed && (key === 'x' || key === 'c' || key === 'v')) {

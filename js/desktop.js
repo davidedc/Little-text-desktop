@@ -54,7 +54,7 @@ function createEditor(wordWrapEnabled = false) {
     const { x, y } = getRandomCoordinates(DEFAULT_WINDOW_WIDTH_chars + 5, DEFAULT_WINDOW_HEIGHT_chars + 5);
     const width = DEFAULT_WINDOW_WIDTH_chars + 5;
     const height = DEFAULT_WINDOW_HEIGHT_chars + 5;
-    const title = `Editor ${tWidgets.filter(w => w instanceof TEditorWidget).length + 1}${wordWrapEnabled ? " (Wrapped)" : ""}`;
+    const title = `Editor ${tWidgets.filter(w => w instanceof TEditorWidget).length + 1}`;
     const initialText = `Welcome to TEditorWidget!\n\n` +
         `- Use Arrow Keys to move.\n` +
         `- Type characters to insert.\n` +
@@ -858,17 +858,24 @@ function handleWheel(e) {
  * Handles keyboard events for the active widget
  */
 function handleKeyDown(e) {
+    // Debug logging for all key events
+    console.log(`Key pressed: key=${e.key}, code=${e.code}, altKey=${e.altKey}, ctrlKey=${e.ctrlKey}, metaKey=${e.metaKey}`);
+    
     if (activeWidget) {
+        console.log(`Active widget: ${activeWidget.title}, type: ${activeWidget.constructor.name}`);
         // Let the widget handle the key press
         // The widget's handler should call e.preventDefault() if it uses the key
         // and trigger drawTWidgets() if redraw is needed
-        activeWidget.handleKeyPress(e);
+        const handled = activeWidget.handleKeyPress(e);
+        console.log(`Widget handled key: ${handled}`);
     } else if (e.key === 'Escape' && viewMenuWidget && tWidgets.includes(viewMenuWidget)) {
          // If no widget is active, but view menu is open, Escape closes it
          viewMenuWidget.closeAll(); // Includes destroy
          viewMenuWidget = null;
          drawTWidgets();
          e.preventDefault();
+    } else {
+        console.log('No active widget to handle key event');
     }
     // Add global shortcuts here if needed (e.g., Alt+Tab for cycling widgets)
 }
