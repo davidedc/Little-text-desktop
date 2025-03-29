@@ -6,8 +6,8 @@ class EditorWindow {
         this.row = startRow;    // Starting row position (scroll offset)
         this.col = startCol;    // Starting column position (scroll offset)
         
-        // Enable debug logging
-        this.debug = true;
+        // Debug logging disabled
+        this.debug = false;
     }
     
     // Log debug information

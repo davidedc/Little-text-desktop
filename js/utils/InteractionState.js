@@ -23,7 +23,7 @@ class InteractionState {
         this.startOffset = 0;     // Starting scroll offset (for scrolling)
         this.axis = null;         // Scroll axis: 'vertical' or 'horizontal'
         this.isPressed = false;   // Whether mouse is currently pressed
-        this.debug = true;        // Enable debug logging
+        this.debug = false;       // Debug logging disabled
     }
     
     /**
@@ -112,8 +112,6 @@ class InteractionState {
      * @returns {boolean} True if currently clicking
      */
     isClicking() {
-        console.log("Checking click state:", this.isPressed, this.type, 
-                   (this.isPressed && this.type === 'click'));
         return this.isPressed && this.type === 'click';
     }
 
@@ -153,7 +151,6 @@ class InteractionState {
         this.startX = x;
         this.startY = y;
         this.isPressed = true;
-        this.log("Started selecting at", x, y);
     }
     
     /**
@@ -168,7 +165,6 @@ class InteractionState {
      * End the current interaction
      */
     endInteraction() {
-        this.log("Ending interaction:", this.type);
         this.isPressed = false;
     }
 }

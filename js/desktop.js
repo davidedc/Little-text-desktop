@@ -16,8 +16,8 @@ const CLOCK_UPDATE_INTERVAL_ms = 1000;
 // UI elements
 const LIGHT_SHADE = '░';
 const MEDIUM_SHADE = '▒';
-const SCROLL_BAR_WIDTH_chars = 1;
-const CURSOR_BLINK_DELAY = 800;
+const SCROLL_BAR_WIDTH_chars = 1; // Note: TEditorWidget calculates based on need now
+const CURSOR_BLINK_DELAY = 800; // Adjusted from original value for consistency maybe? Check TEditorWidget.
 
 // Sample text
 const loremIpsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " +
@@ -35,7 +35,8 @@ let statusWidget = null;
 let GRID_WIDTH_chars, GRID_HEIGHT_chars;
 let charWidth_px, charHeight_px;
 let clockUpdateInterval = null;
-let menuWidget;
+let menuWidget; // Main menu
+let viewMenuWidget = null; // View menu instance tracker
 let charactersGridElement;
 let statusMessageTimer = null; // Timer for temporary status messages
 
@@ -49,24 +50,39 @@ function getRandomCoordinates(widgetWidth, widgetHeight) {
 }
 
 // Create a new text editor widget at random position
-function createEditor() {
+function createEditor(wordWrapEnabled = false) {
     const { x, y } = getRandomCoordinates(DEFAULT_WINDOW_WIDTH_chars + 5, DEFAULT_WINDOW_HEIGHT_chars + 5);
     const width = DEFAULT_WINDOW_WIDTH_chars + 5;
     const height = DEFAULT_WINDOW_HEIGHT_chars + 5;
-    const title = `Editor ${tWidgets.filter(w => w instanceof TEditorWidget).length + 1}`;
+    const title = `Editor ${tWidgets.filter(w => w instanceof TEditorWidget).length + 1}${wordWrapEnabled ? " (Wrapped)" : ""}`;
     const initialText = `Welcome to TEditorWidget!\n\n` +
         `- Use Arrow Keys to move.\n` +
         `- Type characters to insert.\n` +
         `- Backspace/Delete to remove text.\n` +
         `- Enter to split lines.\n` +
         `- Mouse wheel scrolls vertically.\n` +
-        `- Click to position cursor.\n\n` +
+        `- Click to position cursor.\n` +
+        `- Select text by dragging mouse.\n`+
+        `- Ctrl+C/Cmd+C to Copy.\n`+
+        `- Ctrl+X/Cmd+X to Cut.\n`+
+        `- Ctrl+V/Cmd+V to Paste.\n\n` +
         loremIpsum.substring(0, 200) + "...";
 
     const editor = new TEditorWidget(x, y, width, height, title, initialText);
+    
+    // Enable word wrap if requested
+    if (wordWrapEnabled) {
+        editor.toggleWordWrap();
+    }
+    
     tWidgets.push(editor);
     bringToFrontAndFocus(editor);
     drawTWidgets();
+}
+
+// Create a new text editor widget with word wrap enabled
+function createWrappedEditor() {
+    createEditor(true);
 }
 
 // Create a new clock widget at random position
@@ -76,7 +92,7 @@ function createClock() {
     tWidgets.push(clock);
     bringToFrontAndFocus(clock);
     clock.update();
-    
+
     // Start clock update interval if not already running
     if (typeof clockUpdateInterval === 'undefined' || !clockUpdateInterval) {
         clockUpdateInterval = setInterval(updateClocks, CLOCK_UPDATE_INTERVAL_ms);
@@ -115,7 +131,7 @@ function createStatusTWidget() {
     if (statusWidget) return;
     const height = STATUS_WINDOW_HEIGHT_chars;
     statusWidget = new TStatusWidget(0, GRID_HEIGHT_chars - height, GRID_WIDTH_chars, height);
-    tWidgets.unshift(statusWidget);
+    tWidgets.unshift(statusWidget); // Keep status widget at the bottom of the drawing stack initially
 }
 
 // Show a message in the status widget
@@ -126,23 +142,23 @@ function createStatusTWidget() {
  */
 function showStatusMessage(message, duration = 0) {
     if (!statusWidget) return;
-    
+
     console.log("Status message:", message);
-    
+
     // Clear any existing timer
     if (statusMessageTimer) {
         clearTimeout(statusMessageTimer);
         statusMessageTimer = null;
     }
-    
+
     // Update status message
     const changed = statusWidget.setMessage(message);
     if (changed) drawTWidgets();
-    
+
     // Auto-clear after duration if specified
     if (duration > 0) {
         statusMessageTimer = setTimeout(() => {
-            showStatusMessage("");
+            showStatusMessage(""); // Clear by setting empty message
             statusMessageTimer = null;
         }, duration);
     }
@@ -165,7 +181,40 @@ function createRandomTWidget() {
     }
 }
 
-/** 
+// --- View Menu Functionality ---
+
+// Function to create or show the View menu
+function createViewMenu() {
+     // Close existing view menu if any (or just focus it?)
+     if (viewMenuWidget && tWidgets.includes(viewMenuWidget)) {
+          bringToFrontAndFocus(viewMenuWidget);
+          return;
+     }
+
+    const viewMenuItems = [
+        // Empty for now - future view options can be added here
+    ];
+     const menuWidth = 20;
+     const menuHeight = viewMenuItems.length + 2;
+      // Position it next to the main menu, for example
+      const menuX = menuWidget ? menuWidget.x + menuWidget.w -1 : 25;
+      const menuY = menuWidget ? menuWidget.y : 2;
+
+     // Ensure menu fits on screen
+      const clampedX = clamp(menuX, 0, GRID_WIDTH_chars - menuWidth);
+      const clampedY = clamp(menuY, 0, GRID_HEIGHT_chars - menuHeight - STATUS_WINDOW_HEIGHT_chars);
+
+
+     viewMenuWidget = new TMenuWidget(clampedX, clampedY, menuWidth, menuHeight, "View", viewMenuItems, false, menuWidget); // Not pinned, parent is main menu conceptually
+     tWidgets.push(viewMenuWidget);
+     bringToFrontAndFocus(viewMenuWidget);
+     drawTWidgets();
+}
+
+
+// --- Drawing ---
+
+/**
  * Redraws all widgets onto the character grid.
  * Clears the grid, draws each widget in order.
  */
@@ -176,6 +225,7 @@ function drawTWidgets() {
         .map(() => Array(GRID_WIDTH_chars).fill(null).map(() => new Cell(' ')));
 
     // Draw each widget
+    // Note: Status widget is drawn first (as it's unshifted), others drawn on top
     tWidgets.forEach((widget, widgetIndex) => {
         const isTopWidget = (widget === activeWidget) || widgetIndex === tWidgets.length - 1;
         widget.draw(characterGrid, isTopWidget);
@@ -189,14 +239,14 @@ function drawTWidgets() {
  * Searches widgets from top to bottom in the drawing order.
  */
 function findWidgetAt(mouseX_chars, mouseY_chars) {
-    // Search widgets from top to bottom
+    // Search widgets from top to bottom (last in array is topmost visually)
     for (let widgetIndex = tWidgets.length - 1; widgetIndex >= 0; widgetIndex--) {
         const widget = tWidgets[widgetIndex];
-        
+
         // Calculate widget boundaries
         const widgetStartX = widget.x;
         const widgetEndX = widget.x + widget.w;
-        const widgetStartY = widget.y; 
+        const widgetStartY = widget.y;
         const widgetEndY = widget.y + widget.h;
 
         // Check if coordinates are within widget bounds
@@ -210,7 +260,7 @@ function findWidgetAt(mouseX_chars, mouseY_chars) {
     return null;
 }
 
-/** 
+/**
  * Sets the currently active widget, handling focus gain/loss.
  * @param {TWidget} widget - The widget to make active
  */
@@ -230,7 +280,7 @@ function setActiveWidget(widget) {
     }
 }
 
-/** 
+/**
  * Moves a widget to the end of the array (drawing order) and sets focus.
  * This makes the widget appear on top and become active.
  * @param {TWidget} widget - The widget to bring to front and focus
@@ -259,7 +309,7 @@ function bringToFront(widget) {
     // Only move if not already at end
     const index = tWidgets.indexOf(widget);
     if (index > -1 && index < tWidgets.length - 1) {
-        tWidgets.splice(index, 1); 
+        tWidgets.splice(index, 1);
         tWidgets.push(widget);
     }
 }
@@ -273,85 +323,113 @@ function handleMouseDown(e) {
     // Get mouse coordinates in character units
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     const result = findWidgetAt(mouseX_chars, mouseY_chars);
-    
+
     console.log("Mouse down at:", mouseX_chars, mouseY_chars);
-    
+
     // Reset interaction state
     interactionState.reset();
 
     if (result) {
         const { widget } = result;
         console.log("Mouse down on widget:", widget.constructor.name);
-        
+
         // Start with assumption this is a simple click
         interactionState.startClick(widget, mouseX_chars, mouseY_chars);
         console.log("Started click interaction on", widget.constructor.name);
-        
+
         // Bring widget to front if not already active
         if (widget !== activeWidget) {
             console.log("Bringing to front:", widget.constructor.name);
             bringToFrontAndFocus(widget);
-            drawTWidgets();
+            // Redraw only if focus actually changed something visual (like border/shadow)
+            // DrawTWidgets will happen anyway if an interaction starts, or on mouseup
+            // drawTWidgets(); // Maybe avoid redraw here for performance?
         }
 
         // Calculate relative coordinates within widget
         const innerX = mouseX_chars - widget.x;
         const innerY = mouseY_chars - widget.y;
         console.log("Relative position within widget:", innerX, innerY);
-        
+
         // Check for different interaction types in priority order
-        if (tryHandleCloseButton(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
-            console.log("Handled as close button click");
-            return;
+        // Status widget cannot be closed/dragged/resized normally
+        if (widget !== statusWidget) {
+            if (tryHandleCloseButton(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+                console.log("Handled as close button click");
+                drawTWidgets(); // Redraw needed after close
+                return;
+            }
+            if (tryHandleResizeHandle(widget, mouseX_chars, mouseY_chars)) {
+                console.log("Handled as resize interaction");
+                 // Status message set in startWidgetResize
+                return;
+            }
+            // Check for scrollbar *before* title bar drag
+             if (tryHandleScrollbar(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+                 console.log("Handled as scrollbar interaction");
+                  // Status message set in startScrollbarDrag
+                 return;
+             }
+            if (tryHandleTitleBarDrag(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
+                console.log("Handled as title bar drag");
+                 // Status message set in startWidgetDrag
+                return;
+            }
+            // Allow content drag only for non-editors/menus OR if click wasn't handled by mouseDown
+             if (!(widget instanceof TEditorWidget) && !(widget instanceof TMenuWidget)) {
+                 if (tryHandleContentDrag(widget, mouseX_chars, mouseY_chars)) {
+                     console.log("Handled as content drag");
+                     return;
+                 }
+             }
         }
-        if (tryHandleScrollbar(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
-            console.log("Handled as scrollbar interaction");
-            return;
-        }
-        if (tryHandleResizeHandle(widget, mouseX_chars, mouseY_chars)) {
-            console.log("Handled as resize interaction");
-            return;
-        }
-        if (tryHandleTitleBarDrag(widget, mouseX_chars, mouseY_chars, innerX, innerY)) {
-            console.log("Handled as title bar drag");
-            return;
-        }
-        if (tryHandleContentDrag(widget, mouseX_chars, mouseY_chars)) {
-            console.log("Handled as content drag");
-            return;
-        }
-        
-        // Try to handle mouseDown directly using polymorphism
-        // Any widget can handle immediate mouse down actions by implementing mouseDown
-        // and returning true when the event is handled
+
+
+        // Try to handle mouseDown directly using polymorphism (e.g., editor cursor placement)
         console.log("Trying widget mouseDown directly");
-        const handled = widget.mouseDown(mouseX_chars, mouseY_chars);
-        if (handled) {
+        const handledByWidget = widget.mouseDown(mouseX_chars, mouseY_chars);
+        if (handledByWidget) {
             console.log("Widget mouseDown handled directly");
-            // Still keep the interaction state as click for mouse up handling
+            // If the widget handled it (e.g., TEditorWidget placed cursor),
+            // the interaction state remains 'click' but the primary action is done.
+            // MouseMove might transition it to 'selecting'. MouseUp will finalize.
+            // Redraw might have already happened in widget.mouseDown().
             return;
+        } else if (widget !== statusWidget && !(widget instanceof TEditorWidget) && !(widget instanceof TMenuWidget)) {
+            // If not handled by mouseDown, and it's a draggable type, default to drag
+            // This covers clicking in content area of Clock/TextView if not on scrollbar
+             if (tryHandleContentDrag(widget, mouseX_chars, mouseY_chars)) {
+                console.log("Handled as default content drag after mouseDown miss");
+                return;
+             }
         }
-        
-        // If we get here, it's a normal click that will be handled on mouseup
-        console.log("Normal click will be handled on mouse up");
+
+        // If we get here, it's a normal click (or start of selection) that will be handled on mouseup/mousemove
+        console.log("Normal click/selection start will be handled on mouse move/up");
         // The click state is already set in interactionState
+
     } else {
         console.log("Mouse down on background");
         // Clicked on background
         handleBackgroundClick();
     }
+     // Redraw might be needed if focus changed or background click closed menu
+     drawTWidgets();
 }
 
 /**
  * Try to handle click on a widget's close button
  */
 function tryHandleCloseButton(widget, mouseX, mouseY, innerX, innerY) {
-    const closeX = widget.x + widget.w - 2;
-    const isTitleY = (mouseY === widget.y);
-    const canClose = (widget !== statusWidget) && !(widget === menuWidget && widget.pinned);
-    
-    if (canClose && mouseX === closeX && isTitleY && widget.w >= 4) {
-        handleCloseButton(widget);
+    // Use widget properties directly
+    const closeButtonX = widget.x + widget.w - 2;
+    const isTitleBarY = (mouseY === widget.y);
+    // Check if the widget *can* be closed (not status, not pinned menu)
+    const canClose = !(widget.isStatusTWidget) && !(widget instanceof TMenuWidget && widget.pinned);
+
+    if (canClose && widget.w >= 4 && mouseX === closeButtonX && isTitleBarY) {
+        handleCloseButton(widget); // Handle the closing action
+        interactionState.reset(); // Prevent further interaction like drag/click
         return true;
     }
     return false;
@@ -361,9 +439,12 @@ function tryHandleCloseButton(widget, mouseX, mouseY, innerX, innerY) {
  * Handle click on close button
  */
 function handleCloseButton(widget) {
-    widget.destroy();
-    setActiveWidget(null);
-    drawTWidgets();
+    widget.destroy(); // Let the widget clean itself up
+    // If the closed widget was active, set activeWidget to null
+    if (activeWidget === widget) {
+        setActiveWidget(null);
+    }
+    // Redraw happens in the caller (handleMouseDown)
 }
 
 /**
@@ -374,44 +455,35 @@ function tryHandleScrollbar(widget, mouseX, mouseY, innerX, innerY) {
     let vScrollInfo = widget.getVerticalScrollbarInfo ? widget.getVerticalScrollbarInfo() : null;
     let hScrollInfo = widget.getHorizontalScrollbarInfo ? widget.getHorizontalScrollbarInfo() : null;
 
-    console.log("Trying scrollbar:", 
-               "Has vertical scrollbar:", !!vScrollInfo, 
-               "Has horizontal scrollbar:", !!hScrollInfo);
-               
-    if (vScrollInfo) {
-        console.log("Vertical scrollbar:", 
-                   "At position:", widget.x + widget.w - 2,
-                   "Thumb position:", vScrollInfo.thumbPosition,
-                   "Thumb size:", vScrollInfo.thumbSize);
-    }
+    // console.log("Trying scrollbar:",
+    //            "Has vertical scrollbar:", !!vScrollInfo,
+    //            "Has horizontal scrollbar:", !!hScrollInfo);
 
     // Check if clicking vertical scrollbar thumb
-    if (vScrollInfo && 
-        mouseX === widget.x + widget.w - 2 && 
-        innerY > 0 && 
-        innerY <= vScrollInfo.trackSize && 
-        innerY >= vScrollInfo.thumbPosition && 
-        innerY < vScrollInfo.thumbPosition + vScrollInfo.thumbSize) {
-        
+    if (vScrollInfo &&
+        mouseX === widget.x + widget.w - 2 && // Scrollbar column
+        innerY >= 1 && innerY < 1 + vScrollInfo.trackSize && // Within vertical track bounds
+        innerY >= 1 + vScrollInfo.thumbPosition &&
+        innerY < 1 + vScrollInfo.thumbPosition + vScrollInfo.thumbSize) { // On thumb
+
         console.log("Starting vertical scrollbar drag");
         startScrollbarDrag(widget, 'vertical', mouseX, mouseY);
         return true;
     }
 
     // Check if clicking horizontal scrollbar thumb
-    if (hScrollInfo && 
-        mouseY === widget.y + widget.h - 2 && 
-        innerX > 0 && 
-        innerX <= hScrollInfo.trackSize && 
-        innerX >= hScrollInfo.thumbPosition && 
-        innerX < hScrollInfo.thumbPosition + hScrollInfo.thumbSize) {
-        
+    if (hScrollInfo &&
+        mouseY === widget.y + widget.h - 2 && // Scrollbar row
+        innerX >= 1 && innerX < 1 + hScrollInfo.trackSize && // Within horizontal track bounds
+        innerX >= 1 + hScrollInfo.thumbPosition &&
+        innerX < 1 + hScrollInfo.thumbPosition + hScrollInfo.thumbSize) { // On thumb
+
         console.log("Starting horizontal scrollbar drag");
         startScrollbarDrag(widget, 'horizontal', mouseX, mouseY);
         return true;
     }
-    
-    console.log("Not on scrollbar");
+
+    // console.log("Not on scrollbar thumb");
     return false;
 }
 
@@ -419,10 +491,11 @@ function tryHandleScrollbar(widget, mouseX, mouseY, innerX, innerY) {
  * Start scrollbar dragging interaction
  */
 function startScrollbarDrag(widget, axis, mouseX, mouseY) {
-    const startOffset = (axis === 'vertical') 
-        ? ((widget instanceof TEditorWidget) ? widget.editorWindow.row : widget.scrollOffset)
-        : ((widget instanceof TEditorWidget) ? widget.editorWindow.col : 0);
-        
+    // Get the current scroll position to calculate offset later
+    const startOffset = (axis === 'vertical')
+        ? widget.getVerticalScrollPosition()
+        : widget.getHorizontalScrollPosition();
+
     interactionState.startScrollDrag(widget, axis, mouseX, mouseY, startOffset);
     showStatusMessage(`Scrolling ${widget.title}...`);
 }
@@ -431,10 +504,10 @@ function startScrollbarDrag(widget, axis, mouseX, mouseY) {
  * Try to handle resize handle interaction
  */
 function tryHandleResizeHandle(widget, mouseX, mouseY) {
-    const resizeX = widget.x + widget.w - 1;
-    const resizeY = widget.y + widget.h - 1;
-    
-    if (mouseX === resizeX && mouseY === resizeY) {
+    const resizeHandleX = widget.x + widget.w - 1;
+    const resizeHandleY = widget.y + widget.h - 1;
+
+    if (mouseX === resizeHandleX && mouseY === resizeHandleY) {
         startWidgetResize(widget, mouseX, mouseY);
         return true;
     }
@@ -453,10 +526,15 @@ function startWidgetResize(widget, mouseX, mouseY) {
  * Try to handle title bar drag interaction
  */
 function tryHandleTitleBarDrag(widget, mouseX, mouseY, innerX, innerY) {
-    const closeX = widget.x + widget.w - 2;
-    const isTitleY = (mouseY === widget.y);
-    
-    if (isTitleY && mouseX > widget.x && mouseX < closeX) {
+    const isTitleBarY = (mouseY === widget.y);
+    const closeButtonX = widget.x + widget.w - 2;
+    // Allow drag only on title bar, between start and close button (if exists)
+    const canDragTitle = widget.w < 4 || (mouseX > widget.x && mouseX < closeButtonX);
+
+    // Check if pinnable menu allows title drag
+     const isDraggableMenu = widget instanceof TMenuWidget && !widget.pinned;
+
+    if (isTitleBarY && (canDragTitle || isDraggableMenu)) {
         startWidgetDrag(widget, mouseX, mouseY);
         return true;
     }
@@ -467,7 +545,13 @@ function tryHandleTitleBarDrag(widget, mouseX, mouseY, innerX, innerY) {
  * Try to handle content area drag for applicable widget types
  */
 function tryHandleContentDrag(widget, mouseX, mouseY) {
-    if (!(widget instanceof TEditorWidget) && !(widget instanceof TMenuWidget)) {
+    // Allow dragging non-interactive widgets by their content area
+    // Exclude status widget, editor, and menus (unless menu is not pinned)
+    const isDraggableContent = !(widget.isStatusTWidget) &&
+                               !(widget instanceof TEditorWidget) &&
+                               !(widget instanceof TMenuWidget && widget.pinned);
+
+    if (isDraggableContent) {
         startWidgetDrag(widget, mouseX, mouseY);
         return true;
     }
@@ -478,7 +562,10 @@ function tryHandleContentDrag(widget, mouseX, mouseY) {
  * Start widget drag interaction
  */
 function startWidgetDrag(widget, mouseX, mouseY) {
-    interactionState.startDrag(widget, mouseX, mouseY, mouseX - widget.x, mouseY - widget.y);
+    // Calculate offset from mouse click to widget top-left corner
+    const offsetX = mouseX - widget.x;
+    const offsetY = mouseY - widget.y;
+    interactionState.startDrag(widget, mouseX, mouseY, offsetX, offsetY);
     showStatusMessage("Dragging " + widget.title);
 }
 
@@ -486,76 +573,97 @@ function startWidgetDrag(widget, mouseX, mouseY) {
  * Handle click on background (outside any widget)
  */
 function handleBackgroundClick() {
+    // Close main menu submenus if not pinned
     if (activeWidget instanceof TMenuWidget && !activeWidget.pinned) {
-        activeWidget.closeAll();
-        drawTWidgets();
+        // If it's the view menu, just close it
+        if (activeWidget === viewMenuWidget) {
+             activeWidget.closeAll(); // closeAll includes destroy()
+             viewMenuWidget = null; // Clear reference
+        } else {
+             // If it's a submenu of the main menu, close up to pinned parent
+              let current = activeWidget;
+              while(current && !current.pinned) {
+                  const parent = current.parentMenu;
+                  current.closeAll();
+                  current = parent;
+              }
+               if(current) setActiveWidget(current); // Focus parent?
+               else setActiveWidget(null);
+        }
+        // Redraw happens in caller (handleMouseDown)
     }
+     // Also close the view menu if it's open but not active and we click background
+     else if (viewMenuWidget && tWidgets.includes(viewMenuWidget) && activeWidget !== viewMenuWidget) {
+          viewMenuWidget.closeAll(); // Includes destroy
+          viewMenuWidget = null;
+          // Redraw happens in caller
+     } else if (activeWidget && activeWidget !== statusWidget && activeWidget !== menuWidget) {
+          // Deselect current widget if clicking background
+           //setActiveWidget(null); // Optional: deselect widget on background click
+           // drawTWidgets();
+     }
 }
 
 /**
  * Main mouse move handler - delegates to specific move handlers based on interaction type
  */
 function handleMouseMove(e) {
+    // Only process if mouse button is potentially down
+    if (e.buttons === 0 && !interactionState.isPressed) {
+        // Check if we were in an interaction that ended unexpectedly (e.g., mouse up outside window)
+        if (interactionState.isActive() || interactionState.isClicking() || interactionState.isSelecting()) {
+            console.log("Mouse button released outside, ending interaction.");
+            endActiveInteraction(); // Clean up state
+             // Handle potential selection end
+             const widget = interactionState.targetWidget;
+             if (widget instanceof TEditorWidget && widget.selectionAutoScrollTimer) {
+                clearInterval(widget.selectionAutoScrollTimer);
+                 widget.selectionAutoScrollTimer = null;
+             }
+             interactionState.reset(); // Fully reset
+             drawTWidgets();
+        }
+        return;
+    }
+
+
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     let needsRedraw = false;
 
-    // Handle text selection (when mouse is pressed but interaction isn't active yet)
+    // Handle text selection (when mouse is pressed during 'click' or 'selecting' state)
     if (interactionState.isClicking() || interactionState.isSelecting()) {
         const widget = interactionState.targetWidget;
-        
+
         // Check if it's an editor widget that can handle selection
         if (widget instanceof TEditorWidget) {
-            // If we're just clicking, switch to selecting mode
+            // If we're just clicking, transition to selecting mode
             if (interactionState.isClicking()) {
+                // Re-use start coords from the 'click' state
                 interactionState.startSelecting(widget, interactionState.startX, interactionState.startY);
+                 // Ensure selection starts at the initial click point in the editor logic
+                 // The mouseDown handler should have set the initial cursor/selection start
             }
-            
+
             // Extend the selection to the current mouse position
-            // Important: We don't check mouse bounds here to allow off-widget selection
             needsRedraw = widget.extendSelection(mouseX_chars, mouseY_chars);
-            
+
             if (needsRedraw) {
-                // Continuous auto-scroll on selection drag, but with debouncing to prevent flicker
-                if (!widget.selectionAutoScrollTimer) {
-                    console.log("Setting up auto-scroll timer");
-                    
-                    // Store mouse position for timer updates
-                    widget.lastMouseX = mouseX_chars;
-                    widget.lastMouseY = mouseY_chars;
-                    
-                    // Use slower timer to reduce flashing (250ms)
-                    widget.selectionAutoScrollTimer = setInterval(() => {
-                        // Only continue auto-scrolling if we're still selecting
-                        if (interactionState.isSelecting() && interactionState.targetWidget === widget) {
-                            console.log("Auto-scroll timer tick using position:", 
-                                       widget.lastMouseX, widget.lastMouseY);
-                            
-                            // Use the latest mouse position (updated during mouse moves)
-                            if (widget.extendSelection(widget.lastMouseX, widget.lastMouseY)) {
-                                drawTWidgets();
-                            }
-                        } else {
-                            // Stop timer if we're not selecting anymore
-                            console.log("Auto-scroll timer stopped - selection ended");
-                            clearInterval(widget.selectionAutoScrollTimer);
-                            widget.selectionAutoScrollTimer = null;
-                        }
-                    }, 250); // Slower auto-scroll timer (250ms instead of 100ms)
-                } else {
-                    // Just update the stored mouse position for the timer
-                    widget.lastMouseX = mouseX_chars;
-                    widget.lastMouseY = mouseY_chars;
-                }
-                
-                drawTWidgets();
-                return; // Skip other handlers
+                // Continuous auto-scroll on selection drag
+                // Debouncing happens implicitly by mousemove event frequency
+                 // Simple immediate redraw on mousemove seems okay for now
+                 drawTWidgets();
             }
+             // Store last mouse position for potential timer-based scrolling if implemented later
+              widget.lastMouseX = mouseX_chars;
+              widget.lastMouseY = mouseY_chars;
+
+            return; // Skip other handlers if selecting
         }
     }
-    
+
     // No action for other interactions if not active
     if (!interactionState.isActive()) return;
-    
+
     // Delegate to specific handler based on interaction type
     if (interactionState.isScrolling()) {
         needsRedraw = handleScrollbarDragMove(mouseX_chars, mouseY_chars);
@@ -580,26 +688,31 @@ function handleScrollbarDragMove(mouseX, mouseY) {
     let scrollInfo = null;
     let mouseDelta = 0;
     let newScrollOffset = 0;
+    let changed = false;
 
     if (interactionState.axis === 'vertical') {
         scrollInfo = widget.getVerticalScrollbarInfo();
-        if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset > 0) {
+        if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset >= 0) { // Allow maxScrollOffset 0
             mouseDelta = mouseY - interactionState.startY;
-            const offsetPerChar = scrollInfo.maxScrollOffset / Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
-            newScrollOffset = interactionState.startOffset + (mouseDelta * offsetPerChar);
-            return widget.updateScrollOffset('vertical', newScrollOffset);
+             // Calculate scroll amount based on relative track movement
+             const trackTravel = Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
+             const scrollPerPixel = scrollInfo.maxScrollOffset / trackTravel;
+             newScrollOffset = interactionState.startOffset + (mouseDelta * scrollPerPixel);
+             // Use widget's method to update and clamp
+             changed = widget.setVerticalScrollPosition(newScrollOffset);
         }
     } else if (interactionState.axis === 'horizontal') {
         scrollInfo = widget.getHorizontalScrollbarInfo();
-        if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset > 0) {
+        if (scrollInfo && scrollInfo.trackSize > 0 && scrollInfo.maxScrollOffset >= 0) {
             mouseDelta = mouseX - interactionState.startX;
-            const offsetPerChar = scrollInfo.maxScrollOffset / Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
-            newScrollOffset = interactionState.startOffset + (mouseDelta * offsetPerChar);
-            return widget.updateScrollOffset('horizontal', newScrollOffset);
+             const trackTravel = Math.max(1, scrollInfo.trackSize - scrollInfo.thumbSize);
+             const scrollPerPixel = scrollInfo.maxScrollOffset / trackTravel;
+             newScrollOffset = interactionState.startOffset + (mouseDelta * scrollPerPixel);
+             changed = widget.setHorizontalScrollPosition(newScrollOffset);
         }
     }
-    
-    return false;
+
+    return changed; // Return true if scroll position actually changed
 }
 
 /**
@@ -607,20 +720,23 @@ function handleScrollbarDragMove(mouseX, mouseY) {
  */
 function handleWidgetResizeMove(mouseX, mouseY) {
     const widget = interactionState.targetWidget;
-    
-    // Calculate new dimensions while respecting minimums
+
+    // Calculate new dimensions based on mouse position relative to widget origin
     const newWidth = Math.max(MIN_WINDOW_WIDTH_chars, mouseX - widget.x + 1);
     const newHeight = Math.max(MIN_WINDOW_HEIGHT_chars, mouseY - widget.y + 1);
-    
+
     // Clamp dimensions to grid boundaries
     const clampedWidth = Math.min(newWidth, GRID_WIDTH_chars - widget.x);
-    const clampedHeight = Math.min(newHeight, GRID_HEIGHT_chars - widget.y);
-    
+    // Ensure height doesn't overlap status bar (unless it IS the status bar)
+    const maxAllowedY = GRID_HEIGHT_chars - (widget === statusWidget ? 0 : STATUS_WINDOW_HEIGHT_chars);
+    const clampedHeight = Math.min(newHeight, maxAllowedY - widget.y);
+
+
     if (widget.w !== clampedWidth || widget.h !== clampedHeight) {
         widget.updateDimensions(clampedWidth, clampedHeight);
         return true;
     }
-    
+
     return false;
 }
 
@@ -629,22 +745,24 @@ function handleWidgetResizeMove(mouseX, mouseY) {
  */
 function handleWidgetDragMove(mouseX, mouseY) {
     const widget = interactionState.targetWidget;
-    
-    // Calculate new position using drag offsets
+
+    // Calculate new potential top-left position using drag offsets
     const newPosX = mouseX - interactionState.offsetX;
     const newPosY = mouseY - interactionState.offsetY;
-    
-    // Clamp position to keep widget in bounds
-    const maxPosY = GRID_HEIGHT_chars - widget.h - STATUS_WINDOW_HEIGHT_chars;
+
+    // Clamp position to keep widget within grid bounds
     const clampedPosX = clamp(newPosX, 0, GRID_WIDTH_chars - widget.w);
+    // Ensure widget stays above status bar (unless it IS status bar)
+    const maxPosY = GRID_HEIGHT_chars - widget.h - (widget === statusWidget ? 0 : STATUS_WINDOW_HEIGHT_chars);
     const clampedPosY = clamp(newPosY, 0, maxPosY);
-    
+
+
     if (widget.x !== clampedPosX || widget.y !== clampedPosY) {
         widget.x = clampedPosX;
         widget.y = clampedPosY;
         return true;
     }
-    
+
     return false;
 }
 
@@ -654,88 +772,69 @@ function handleWidgetDragMove(mouseX, mouseY) {
 function handleMouseUp(e) {
     // If we're not in the middle of an interaction, nothing to do
     if (!interactionState.isPressed) {
+        // This check might be redundant if mousemove handles button release properly
         console.log("Mouse up: No interaction in progress");
         return;
     }
-    
+
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
-    console.log("Mouse up at:", mouseX_chars, mouseY_chars, 
+    console.log("Mouse up at:", mouseX_chars, mouseY_chars,
                 "Type:", interactionState.type,
                 "Target:", interactionState.targetWidget?.constructor.name);
-    
-    // Clean up selection auto-scroll timer if it exists
+
+    // Clean up selection auto-scroll timer if it exists (though timer approach removed for now)
     const widget = interactionState.targetWidget;
     if (widget instanceof TEditorWidget && widget.selectionAutoScrollTimer) {
         clearInterval(widget.selectionAutoScrollTimer);
         widget.selectionAutoScrollTimer = null;
         console.log("Cleared selection auto-scroll timer");
     }
-    
+
     // Handle interaction completion based on type
     if (interactionState.isClicking()) {
         console.log("Handling click completion");
-        handleClickCompletion(mouseX_chars, mouseY_chars);
+        // Find widget at mouse *up* position
+         const result = findWidgetAt(mouseX_chars, mouseY_chars);
+          // Only trigger click if mouse up is on the same widget as mouse down
+          if (result && result.widget === interactionState.targetWidget) {
+              console.log("Forwarding click to widget:", result.widget.constructor.name);
+              result.widget.click(mouseX_chars, mouseY_chars); // Call widget's click handler
+          } else {
+               console.log("Click ended outside original widget or on background");
+          }
+         // Click always ends the interaction state
+         endActiveInteraction();
+
     } else if (interactionState.isSelecting()) {
         console.log("Ending selection interaction");
-        // Check if the selection is empty (just a click)
-        if (widget instanceof TEditorWidget) {
-            if (widget.selection.startRow === widget.selection.endRow && 
-                widget.selection.startCol === widget.selection.endCol) {
-                // This was just a click (no actual selection), clear it
-                widget.selection.clear();
-            }
-        }
-        endActiveInteraction();
-        drawTWidgets(); // Redraw to update selection
+        // Selection state is maintained in TEditorWidget's selection object.
+        // Just end the interaction tracking state.
+         endActiveInteraction();
+         // Redraw might be needed if selection state changed visually on mouseup (e.g., finalized highlight)
+         // The TEditorWidget click handler might clear selection if it was just a point click.
+         drawTWidgets();
+
     } else {
         console.log("Ending non-click interaction:", interactionState.type);
-        // For other interaction types, just clean up
+        // For drag, resize, scroll, just clean up interaction state and status message.
         endActiveInteraction();
+        // Redraw needed to show final position/size/scroll
+         drawTWidgets();
     }
 }
 
-/**
- * Handle the completion of a click interaction
- */
-function handleClickCompletion(mouseX, mouseY) {
-    const widget = interactionState.targetWidget;
-    if (!widget) {
-        console.log("Click completion: No target widget");
-        interactionState.endInteraction();
-        return;
-    }
-    
-    console.log("Click completion on widget:", widget.constructor.name, "at", mouseX, mouseY);
-    const result = findWidgetAt(mouseX, mouseY);
-    
-    if (!result) {
-        console.log("Click completion: No widget found at mouse up position");
-    } else {
-        console.log("Widget at mouse up:", result.widget.constructor.name);
-    }
-    
-    // Only trigger click if mouse up is on the same widget as mouse down
-    if (result && result.widget === widget) {
-        console.log("Forwarding click to widget:", widget.constructor.name);
-        widget.click(mouseX, mouseY);
-        drawTWidgets();
-    } else {
-        console.log("Widget mismatch between mouse down and mouse up, not forwarding click");
-    }
-    
-    interactionState.endInteraction();
-}
 
 /**
  * End the active interaction and clean up
  */
 function endActiveInteraction() {
-    // Hide status message if we were dragging or resizing
+    // Hide status message if we were dragging, resizing, or scrolling
     if (interactionState.isDragging() || interactionState.isResizing() || interactionState.isScrolling()) {
         hideStatusMessage();
     }
-    
-    interactionState.endInteraction();
+
+    interactionState.endInteraction(); // Mark interaction as not pressed
+    // Keep other state like targetWidget until next interaction starts or explicit reset
 }
 
 /**
@@ -744,11 +843,13 @@ function endActiveInteraction() {
 function handleWheel(e) {
     const { mouseX_chars, mouseY_chars } = getMouseCoords_chars(e);
     const result = findWidgetAt(mouseX_chars, mouseY_chars);
-    
-    if (result) {
+
+    if (result && result.widget.scroll) { // Check if widget has a scroll method
+        // Use scroll method which should handle clamping and return true if scrolled
         const scrolled = result.widget.scroll(Math.sign(e.deltaY));
         if (scrolled) {
-            e.preventDefault();
+            e.preventDefault(); // Prevent default browser page scroll
+             drawTWidgets(); // Redraw needed after scroll
         }
     }
 }
@@ -758,67 +859,92 @@ function handleWheel(e) {
  */
 function handleKeyDown(e) {
     if (activeWidget) {
+        // Let the widget handle the key press
+        // The widget's handler should call e.preventDefault() if it uses the key
+        // and trigger drawTWidgets() if redraw is needed
         activeWidget.handleKeyPress(e);
+    } else if (e.key === 'Escape' && viewMenuWidget && tWidgets.includes(viewMenuWidget)) {
+         // If no widget is active, but view menu is open, Escape closes it
+         viewMenuWidget.closeAll(); // Includes destroy
+         viewMenuWidget = null;
+         drawTWidgets();
+         e.preventDefault();
     }
+    // Add global shortcuts here if needed (e.g., Alt+Tab for cycling widgets)
 }
 
 // --- Initialization and Drawing ---
-/** 
+/**
  * Calculates character grid coordinates from pixel coordinates.
  * Converts mouse pixel coordinates relative to the grid element into character-based coordinates.
  */
 function getMouseCoords_chars(mouseEvent) {
     const gridRect = charactersGridElement.getBoundingClientRect();
+    // Use clientX/Y for coordinates relative to the viewport
     const { clientX, clientY } = mouseEvent;
+    // Get the grid's position relative to the viewport
     const { left, top } = gridRect;
-    
-    // Calculate pixel offsets from grid element edge
+
+    // Calculate pixel offsets from grid element top-left edge
     const mousePosXInPixels = clientX - left;
     const mousePosYInPixels = clientY - top;
-    
+
     // Convert to character coordinates, defaulting to 0 if dimensions not set
+    // Ensure we don't divide by zero if dimensions are somehow 0
     const mouseX_chars = charWidth_px > 0 ? Math.floor(mousePosXInPixels / charWidth_px) : 0;
     const mouseY_chars = charHeight_px > 0 ? Math.floor(mousePosYInPixels / charHeight_px) : 0;
-    
-    return { mouseX_chars, mouseY_chars };
+
+    // Clamp coordinates to be within the grid bounds
+     const clampedX = clamp(mouseX_chars, 0, GRID_WIDTH_chars - 1);
+     const clampedY = clamp(mouseY_chars, 0, GRID_HEIGHT_chars - 1);
+
+
+    return { mouseX_chars: clampedX, mouseY_chars: clampedY };
 }
 
-/** 
+/**
  * Renders the character grid array to HTML.
- * Simply renders each cell's content, which may include HTML for styling.
+ * Uses the Cell object's toString() method which handles HTML escaping or direct HTML content.
  */
 function emitHTML(characterGrid) {
     let htmlOutput = '';
     for (let rowIndex = 0; rowIndex < GRID_HEIGHT_chars; rowIndex++) {
         for (let colIndex = 0; colIndex < GRID_WIDTH_chars; colIndex++) {
+            // Ensure we have a valid Cell object, default to space if out of bounds somehow
             const cell = characterGrid[rowIndex]?.[colIndex] || new Cell(' ');
-            htmlOutput += cell.toString();
+            htmlOutput += cell.toString(); // Cell handles its own rendering (escaped char or HTML span)
         }
-        htmlOutput += '\n';
+        htmlOutput += '\n'; // Newline for preformatted text in HTML
     }
     charactersGridElement.innerHTML = htmlOutput;
 }
 
-/** 
+/**
  * Measures monospace character dimensions by creating a temporary element.
  * Returns character width and height in pixels.
  */
 function measureMonospaceFontDimensions(fontSize) {
     const testSpan = document.createElement('span');
+    // Use the same font stack as defined in CSS
     testSpan.style.fontFamily = '"Courier New", "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace';
     testSpan.style.fontSize = `${fontSize}px`;
     testSpan.style.position = 'absolute';
     testSpan.style.visibility = 'hidden';
-    testSpan.style.whiteSpace = 'pre';
-    testSpan.textContent = 'MMMMMMMMMM';
-    
+    testSpan.style.whiteSpace = 'pre'; // Crucial for accurate width measurement
+    testSpan.textContent = 'MMMMMMMMMM'; // Use 'M' as it's typically one of the widest chars
+
     document.body.appendChild(testSpan);
     const spanRect = testSpan.getBoundingClientRect();
     document.body.removeChild(testSpan);
-    
+
+    // Calculate average width over 10 characters
     const characterWidth = spanRect.width / 10;
-    const characterHeight = fontSize;
-    
+    // Height is trickier, line-height might affect it.
+    // Using fontSize directly is often close enough for monospace fonts with line-height: 1.
+    // For more accuracy, measure a multi-line element, but fontSize is simpler here.
+    const characterHeight = fontSize; // Approximation based on font size
+
+    // Ensure non-zero dimensions
     return {
         charWidth_px: characterWidth > 0 ? characterWidth : 1,
         charHeight_px: characterHeight > 0 ? characterHeight : 1
@@ -829,13 +955,15 @@ function measureMonospaceFontDimensions(fontSize) {
 function initializeSystem() {
     // Get character grid element
     charactersGridElement = document.getElementById('characters-grid');
-    
+
     // Get font size and measure character dimensions
     const style = window.getComputedStyle(charactersGridElement);
     const fontSize = parseFloat(style.fontSize);
     ({charWidth_px, charHeight_px} = measureMonospaceFontDimensions(fontSize));
-    
-    updateGridDimensions();
+
+    // Initial grid dimension calculation
+    updateGridDimensions(); // Calculates GRID_WIDTH_chars, GRID_HEIGHT_chars
+    // Status widget needs grid dimensions, so create it after first update
     createStatusTWidget();
 
     // Create main menu
@@ -844,6 +972,7 @@ function initializeSystem() {
             label: "Create",
             subMenu: [
                 { label: "Editor", callback: createEditor },
+                { label: "Wrapped Editor", callback: createWrappedEditor },
                 { label: "Clock", callback: createClock },
                 { label: "Text View", callback: createTextWidget }
             ]
@@ -852,30 +981,34 @@ function initializeSystem() {
     ];
     const menuWidth = 20;
     const menuHeight = menuItems.length + 2;
-    menuWidget = new TMenuWidget(2, 2, menuWidth, menuHeight, "Main Menu", menuItems, true);
+    menuWidget = new TMenuWidget(2, 2, menuWidth, menuHeight, "Main Menu", menuItems, true); // Pinned main menu
     tWidgets.push(menuWidget);
 
     // Create initial editor and set up event listeners
-    createEditor();
-    
-    // Uncomment the following line to enable scrolling debug logs
-    // tWidgets.forEach(w => { if (w instanceof TScrollableWidget) w.debugScrolling = true; });
-    
+    createEditor(); // Creates the first editor
+
+    // Debug logging disabled
+
+    // Initial draw
     drawTWidgets();
 
+    // Attach event listeners
     charactersGridElement.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove); // Use window for mousemove/up to capture outside releases
     window.addEventListener('mouseup', handleMouseUp);
-    charactersGridElement.addEventListener('wheel', handleWheel, {passive: false});
+    charactersGridElement.addEventListener('wheel', handleWheel, {passive: false}); // Need passive:false to preventDefault
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('resize', handleResize);
 
-    showStatusMessage("System Initialized. Click menu or widgets.");
+    showStatusMessage("System Initialized. Click menu or widgets.", 5000); // Show for 5 seconds
 }
 
 /** Updates global grid dimensions and clamps/resizes widgets if necessary. */
 function updateGridDimensions() {
+    if (!charactersGridElement || !charWidth_px || !charHeight_px) return false; // Guard against early calls
+
     const gridBounds = charactersGridElement.getBoundingClientRect();
+    // Calculate new dimensions based on current element size and char size
     const newGridWidth = charWidth_px > 0 ? Math.floor(gridBounds.width / charWidth_px) : 0;
     const newGridHeight = charHeight_px > 0 ? Math.floor(gridBounds.height / charHeight_px) : 0;
 
@@ -883,38 +1016,60 @@ function updateGridDimensions() {
         GRID_WIDTH_chars = newGridWidth;
         GRID_HEIGHT_chars = newGridHeight;
 
-        // Update status widget position and dimensions
+        console.log(`Grid resized to: ${GRID_WIDTH_chars}x${GRID_HEIGHT_chars}`);
+
+        // Update status widget position and dimensions first
         if (statusWidget) {
             statusWidget.x = 0;
             statusWidget.y = GRID_HEIGHT_chars - STATUS_WINDOW_HEIGHT_chars;
             statusWidget.w = GRID_WIDTH_chars;
             statusWidget.h = STATUS_WINDOW_HEIGHT_chars;
+            // Call updateDimensions to allow internal adjustments if needed
             statusWidget.updateDimensions(statusWidget.w, statusWidget.h);
         }
 
         // Update all other widgets
         tWidgets.forEach(widget => {
-            if (widget === statusWidget) return;
+            if (widget === statusWidget) return; // Skip status widget, already handled
 
-            // Clamp position
+            // Calculate max allowed Y position for widget's top edge
+             const maxAllowedY = GRID_HEIGHT_chars - widget.h - STATUS_WINDOW_HEIGHT_chars;
+
+            // Clamp position first
             widget.x = clamp(widget.x, 0, GRID_WIDTH_chars - widget.w);
-            widget.y = clamp(widget.y, 0, GRID_HEIGHT_chars - widget.h - STATUS_WINDOW_HEIGHT_chars);
+            widget.y = clamp(widget.y, 0, maxAllowedY);
 
-            // Adjust dimensions if needed
+            // Adjust dimensions if widget now exceeds boundaries
             const clampedWidgetWidth = Math.min(widget.w, GRID_WIDTH_chars - widget.x);
             const clampedWidgetHeight = Math.min(widget.h, GRID_HEIGHT_chars - widget.y - STATUS_WINDOW_HEIGHT_chars);
-            
+
+            // Update widget dimensions if they changed due to clamping
             if (widget.w !== clampedWidgetWidth || widget.h !== clampedWidgetHeight) {
-                widget.updateDimensions(clampedWidgetWidth, clampedWidgetHeight);
+                 // Call updateDimensions to allow widget to handle internal recalculations
+                 widget.updateDimensions(clampedWidgetWidth, clampedWidgetHeight);
             }
         });
-        return true;
+        return true; // Dimensions changed
     }
-    return false;
+    return false; // No change
 }
 
 /** Handles browser window resize events. */
 function handleResize() {
+    // Re-measure character dimensions in case font size changed via browser zoom etc.
+    // This might be overkill if font-size is fixed, but safer.
+    const style = window.getComputedStyle(charactersGridElement);
+    const fontSize = parseFloat(style.fontSize);
+    ({charWidth_px, charHeight_px} = measureMonospaceFontDimensions(fontSize));
+
+    // Update grid dimensions and adjust widgets
     const dimensionsChanged = updateGridDimensions();
-    if (dimensionsChanged) drawTWidgets();
+    if (dimensionsChanged) {
+         // Redraw everything if dimensions changed
+         drawTWidgets();
+    }
 }
+
+// Ensure the interactionState instance is available globally if needed elsewhere,
+// though it's primarily used within desktop.js event handlers.
+// const interactionState = new InteractionState(); // Already instantiated in its own file

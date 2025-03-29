@@ -8,8 +8,8 @@ class TScrollableWidget extends TWidget {
     constructor(x, y, w, h, title) {
         super(x, y, w, h, title);
         
-        // Debug flag - set to true to log scrolling operations
-        this.debugScrolling = true;
+        // Debug flag - disabled to reduce logging
+        this.debugScrolling = false;
     }
 
     /**

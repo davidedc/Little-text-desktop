@@ -20,25 +20,61 @@ class EditorBuffer {
     }
 
     insert(cursor, string) {
+        console.log("[DEBUG] insert - cursor:", cursor ? `row:${cursor.row}, col:${cursor.col}` : "null", "string:", string);
+        
+        // Ensure cursor exists
+        if (!cursor) {
+            console.error("[ERROR] insert - cursor is null or undefined");
+            return;
+        }
+        
         const row = cursor.row;
         const col = cursor.col;
+        
+        // Debug for specific issues
+        console.log("[DEBUG] insert - buffer.lines:", this.lines ? `length:${this.lines.length}` : "null");
+        
+        // Ensure the row exists in the buffer
         while (row >= this.lines.length) {
             this.lines.push("");
         }
+        
+        // Get the current line (now guaranteed to exist)
         let current = this.lines[row];
+        console.log("[DEBUG] insert - current line:", current);
+        
+        // Ensure current is a string (defensive programming)
+        if (typeof current !== 'string') {
+            console.error("[ERROR] insert - current line is not a string:", current);
+            current = "";
+            this.lines[row] = current;
+        }
+        
         const safeCol = clamp(col, 0, current.length);
         const newLine = current.slice(0, safeCol) + string + current.slice(safeCol);
         this.lines[row] = newLine;
+        console.log("[DEBUG] insert - success, new line:", newLine);
     }
 
     split(cursor) {
         const row = cursor.row;
         const col = cursor.col;
+        
+        // Ensure the row exists in the buffer
         if (row >= this.lines.length) {
             this.lines.push("");
             return;
         }
+        
+        // Get the current line
         let current = this.lines[row];
+        
+        // Ensure current is a string (defensive programming)
+        if (typeof current !== 'string') {
+            current = "";
+            this.lines[row] = current;
+        }
+        
         const safeCol = clamp(col, 0, current.length);
         const before = current.slice(0, safeCol);
         const after = current.slice(safeCol);
@@ -50,32 +86,34 @@ class EditorBuffer {
         const row = cursor.row;
         const col = cursor.col;
         
-        // Log buffer state before delete
-        console.log("[EditorBuffer] Delete at", row, col, 
-                   "Buffer size before:", this.lines.length,
-                   "Max line length:", this.maxLineLength);
-        
+        // Check bounds
         if (row > this.bottom || (row === this.bottom && col >= this.getLine(row).length)) {
-            console.log("[EditorBuffer] Delete not valid - out of bounds");
             return;
         }
         
+        // Get the current line
         let current = this.lines[row];
+        
+        // Ensure current is a string (defensive programming)
+        if (typeof current !== 'string') {
+            current = "";
+            this.lines[row] = current;
+            return;
+        }
+        
         if (col < current.length) {
             // Delete character from current line
             const newLine = current.slice(0, col) + current.slice(col + 1);
             this.lines[row] = newLine;
-            console.log("[EditorBuffer] Deleted character from line", row);
         } else if (row < this.bottom) {
             // Join current line with next line
-            const nextLine = this.lines.splice(row + 1, 1)[0];
+            let nextLine = this.lines.splice(row + 1, 1)[0] || "";
+            // Ensure nextLine is a string
+            if (typeof nextLine !== 'string') {
+                nextLine = "";
+            }
             this.lines[row] = current + nextLine;
-            console.log("[EditorBuffer] Joined line", row, "with line", row + 1);
         }
-        
-        // Log buffer state after delete
-        console.log("[EditorBuffer] Buffer size after:", this.lines.length,
-                   "Max line length:", this.maxLineLength);
     }
 
     get maxLineLength() {
