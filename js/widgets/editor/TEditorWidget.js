@@ -40,6 +40,148 @@ class TEditorWidget extends TScrollableWidget {
         this.debugLog(`Using ${this.META_KEY} as meta key for this platform`);
     }
 
+    // --- Special Cursor Behavior ---
+    
+    /**
+     * Handles special cursor movement at document boundaries.
+     * When pressing "up" at the first visual line, moves cursor to line start.
+     * When pressing "down" at the last visual line, moves cursor to line end.
+     * 
+     * @param {string} direction - The direction of movement ("up" or "down")
+     * @param {boolean} isShiftPressed - Whether shift is pressed (for selection)
+     * @returns {boolean} - Whether the movement was handled
+     */
+    handleCursorBoundaryMovement(direction, isShiftPressed) {
+        // If any selection is active, don't activate special behavior
+        // unless shift is pressed (extending selection)
+        if (this.selection.active && !isShiftPressed) {
+            return false;
+        }
+        
+        if (this.wordWrapEnabled) {
+            // --- Handle word wrap mode - use visual lines ---
+            const currentLogicalPos = { row: this.cursor.row, col: this.cursor.col };
+            const currentVisualPos = this.mapLogicalToVisual(currentLogicalPos.row, currentLogicalPos.col);
+            
+            if (!currentVisualPos) return false; // Bail if mapping fails
+            
+            const totalVisualLines = this.getTotalVisualLines();
+            
+            if (direction === "up" && currentVisualPos.visualLineIndex === 0) {
+                console.log("At first visual line, pressing up - moving to line start");
+                // At first visual line and pressing up - move to beginning of visual line
+                // Get logical position of first visual line start
+                const logicalStart = this.mapVisualToLogical(0, 0);
+                if (!logicalStart) return false;
+                
+                // Store cursor state for selection
+                const oldRow = this.cursor.row;
+                const oldCol = this.cursor.col;
+                
+                // Move cursor to start of first visual line
+                this.cursor.row = logicalStart.logicalRow;
+                this.cursor.col = logicalStart.logicalCol;
+                
+                // Handle selection update if shift is pressed
+                if (isShiftPressed) {
+                    if (!this.selection.active) {
+                        this.selection.start(oldRow, oldCol);
+                    }
+                    this.selection.extend(this.cursor.row, this.cursor.col);
+                } else if (this.selection.active) {
+                    this.selection.clear();
+                }
+                
+                return true;
+            }
+            else if (direction === "down" && currentVisualPos.visualLineIndex >= totalVisualLines - 1) {
+                console.log("At last visual line, pressing down - moving to line end", 
+                           {currentIndex: currentVisualPos.visualLineIndex, totalLines: totalVisualLines});
+                // At last visual line and pressing down - move to end of visual line
+                const lastVisualLineIndex = totalVisualLines - 1;
+                const dims = this.getContentDimensions();
+                const layout = this.getVisualLayout(dims.contentWidth);
+                
+                if (lastVisualLineIndex < 0 || lastVisualLineIndex >= layout.length) 
+                    return false;
+                
+                const lastVisualLine = layout[lastVisualLineIndex];
+                
+                // Store cursor state for selection
+                const oldRow = this.cursor.row;
+                const oldCol = this.cursor.col;
+                
+                // Move cursor to end of last visual line
+                this.cursor.row = lastVisualLine.logicalRow;
+                this.cursor.col = lastVisualLine.startCol + lastVisualLine.text.length;
+                
+                // Handle selection update if shift is pressed
+                if (isShiftPressed) {
+                    if (!this.selection.active) {
+                        this.selection.start(oldRow, oldCol);
+                    }
+                    this.selection.extend(this.cursor.row, this.cursor.col);
+                } else if (this.selection.active) {
+                    this.selection.clear();
+                }
+                
+                return true;
+            }
+            
+            return false; // Not a boundary case in wrapped mode
+        } 
+        else {
+            // --- Handle non-wrapped mode - use logical lines ---
+            const currentRow = this.cursor.row;
+            
+            if (direction === "up" && currentRow === 0) {
+                // At first line and pressing up - move to beginning of line
+                
+                // Store cursor state for selection if needed
+                const oldCol = this.cursor.col;
+                
+                // Move to line start
+                this.cursor.col = 0;
+                
+                // Handle selection update if shift is pressed
+                if (isShiftPressed) {
+                    if (!this.selection.active) {
+                        this.selection.start(currentRow, oldCol);
+                    }
+                    this.selection.extend(currentRow, 0);
+                } else if (this.selection.active) {
+                    this.selection.clear();
+                }
+                
+                return true;
+            } 
+            else if (direction === "down" && currentRow === this.buffer.bottom) {
+                // At last line and pressing down - move to end of line
+                
+                // Store cursor state for selection if needed
+                const oldCol = this.cursor.col;
+                const lineLength = this.buffer.getLine(currentRow).length;
+                
+                // Move to line end
+                this.cursor.col = lineLength;
+                
+                // Handle selection update if shift is pressed
+                if (isShiftPressed) {
+                    if (!this.selection.active) {
+                        this.selection.start(currentRow, oldCol);
+                    }
+                    this.selection.extend(currentRow, lineLength);
+                } else if (this.selection.active) {
+                    this.selection.clear();
+                }
+                
+                return true;
+            }
+            
+            return false; // Not a boundary case in unwrapped mode
+        }
+    }
+    
     // --- Word Wrap Toggle ---
 
     toggleWordWrap() {
@@ -854,6 +996,15 @@ class TEditorWidget extends TScrollableWidget {
                               preserveColHint = false;
                               break;
                           case "ArrowUp":
+                              // Check if this is a boundary case
+                              if (this.handleCursorBoundaryMovement("up", isShiftPressed)) {
+                                 // If handled, we still need to ensure cursor is visible and reset blink timer
+                                 this.ensureCursorVisible();
+                                 this.resetCursorBlinkTimer();
+                                 drawTWidgets(); // Force immediate redraw
+                                 return true;
+                              }
+                              
                               targetVisualPos.visualLineIndex = Math.max(0, targetVisualPos.visualLineIndex - 1);
                               // Map hint column to visual column on the target line
                               const upTargetLogical = this.mapVisualToLogical(targetVisualPos.visualLineIndex, this.cursor._col_hint);
@@ -869,6 +1020,15 @@ class TEditorWidget extends TScrollableWidget {
                               //targetVisualPos.visualColIndex = this.cursor._col_hint; // Simpler way using hint directly
                               break;
                           case "ArrowDown":
+                              // Check if this is a boundary case
+                              if (this.handleCursorBoundaryMovement("down", isShiftPressed)) {
+                                 // If handled, we still need to ensure cursor is visible and reset blink timer
+                                 this.ensureCursorVisible();
+                                 this.resetCursorBlinkTimer();
+                                 drawTWidgets(); // Force immediate redraw
+                                 return true;
+                              }
+                              
                               const totalLines = this.getTotalVisualLines();
                               targetVisualPos.visualLineIndex = Math.min(totalLines - 1, targetVisualPos.visualLineIndex + 1);
                               // Map hint column to visual column on the target line
@@ -963,9 +1123,28 @@ class TEditorWidget extends TScrollableWidget {
                   if (key === "ArrowLeft" || key === "ArrowUp") { cur.row = startRow; cur.col = startCol; }
                   else { cur.row = endRow; cur.col = endCol; } // Right or Down
                   this.selection.clear();
-                   // Additional move for Up/Down
-                   if(key === "ArrowUp") cur.up(buf);
-                   if(key === "ArrowDown") cur.down(buf);
+                   
+                  // Additional move for Up/Down with boundary check
+                  if(key === "ArrowUp") {
+                      if (this.handleCursorBoundaryMovement("up", false)) {
+                          // If handled, we still need to ensure cursor is visible and reset blink timer
+                          this.ensureCursorVisible();
+                          this.resetCursorBlinkTimer();
+                          // Drawing happens at the end of handleKeyPress
+                      } else {
+                          cur.up(buf);
+                      }
+                  }
+                  if(key === "ArrowDown") {
+                      if (this.handleCursorBoundaryMovement("down", false)) {
+                          // If handled, we still need to ensure cursor is visible and reset blink timer
+                          this.ensureCursorVisible();
+                          this.resetCursorBlinkTimer();
+                          // Drawing happens at the end of handleKeyPress
+                      } else {
+                          cur.down(buf);
+                      }
+                  }
 
              } else {
                  // --- Move cursor or perform action (potentially starting selection) ---
@@ -976,8 +1155,28 @@ class TEditorWidget extends TScrollableWidget {
 
                  if (key === "ArrowLeft") editorLeft(win, buf, cur);
                  else if (key === "ArrowRight") editorRight(win, buf, cur);
-                 else if (key === "ArrowUp") cur.up(buf); // win adjustments done in ensureCursorVisible
-                 else if (key === "ArrowDown") cur.down(buf); // win adjustments done in ensureCursorVisible
+                 else if (key === "ArrowUp") {
+                     // Check for boundary case first
+                     if (this.handleCursorBoundaryMovement("up", isShiftPressed)) {
+                         // If handled, we still need to ensure cursor is visible and reset blink timer
+                         this.ensureCursorVisible();
+                         this.resetCursorBlinkTimer();
+                         // No need to call drawTWidgets() here as it's called at the end of handleKeyPress
+                     } else {
+                         cur.up(buf); // win adjustments done in ensureCursorVisible
+                     }
+                 }
+                 else if (key === "ArrowDown") {
+                     // Check for boundary case first
+                     if (this.handleCursorBoundaryMovement("down", isShiftPressed)) {
+                         // If handled, we still need to ensure cursor is visible and reset blink timer
+                         this.ensureCursorVisible();
+                         this.resetCursorBlinkTimer();
+                         // No need to call drawTWidgets() here as it's called at the end of handleKeyPress
+                     } else {
+                         cur.down(buf); // win adjustments done in ensureCursorVisible
+                     }
+                 }
                  else if (key === "Enter") { if (this.selection.active) this.replaceSelection("\n"); else { buf.split(cur); editorRight(win, buf, cur); }; bufferModified = true; }
                  else if (key === "Backspace") { if (this.selection.active) this.deleteSelection(); else if (cur.row > 0 || cur.col > 0) { editorLeft(win, buf, cur); buf.delete(cur); }; bufferModified = true; }
                  else if (key === "Delete" || (e.ctrlKey && key === 'd')) { if (this.selection.active) this.deleteSelection(); else buf.delete(cur); bufferModified = true; }
