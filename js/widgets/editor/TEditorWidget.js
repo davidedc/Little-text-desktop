@@ -701,6 +701,14 @@ class TEditorWidget extends TScrollableWidget {
 
         this.resetCursorBlinkTimer();
 
+        // Handle modifier keys alone - don't let them affect selection
+        if (['Alt', 'Shift', 'Control', 'Meta', 'CapsLock'].includes(key)) {
+            // Don't clear selection or change state for modifier keys alone
+            // Return true to indicate we're handling it (preventing default behavior)
+            console.log(`Handling modifier key: ${key}`);
+            return true; 
+        }
+
         // Store cursor state before modification for selection logic
         const oldRow = this.cursor.row;
         const oldCol = this.cursor.col;
