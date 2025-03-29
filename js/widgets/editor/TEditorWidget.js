@@ -855,33 +855,33 @@ class TEditorWidget extends TScrollableWidget {
                               break;
                           case "ArrowUp":
                               targetVisualPos.visualLineIndex = Math.max(0, targetVisualPos.visualLineIndex - 1);
-                               // Map hint column to visual column on the target line
-                               const upTargetLogical = this.mapVisualToLogical(targetVisualPos.visualLineIndex, this.cursor._col_hint);
-                                if (upTargetLogical) {
-                                    const upTargetVisual = this.mapLogicalToVisual(upTargetLogical.logicalRow, upTargetLogical.logicalCol);
-                                     if (upTargetVisual && upTargetVisual.visualLineIndex === targetVisualPos.visualLineIndex) {
-                                        targetVisualPos.visualColIndex = upTargetVisual.visualColIndex;
-                                    } else { // Fallback if mapping gets weird
-                                         targetVisualPos.visualColIndex = 0; // Go to start of line
-                                    }
-                                } else targetVisualPos.visualColIndex = 0;
+                              // Map hint column to visual column on the target line
+                              const upTargetLogical = this.mapVisualToLogical(targetVisualPos.visualLineIndex, this.cursor._col_hint);
+                              if (upTargetLogical) {
+                                  const upTargetVisual = this.mapLogicalToVisual(upTargetLogical.logicalRow, upTargetLogical.logicalCol);
+                                  if (upTargetVisual && upTargetVisual.visualLineIndex === targetVisualPos.visualLineIndex) {
+                                     targetVisualPos.visualColIndex = upTargetVisual.visualColIndex;
+                                  } else { // Fallback if mapping gets weird
+                                      targetVisualPos.visualColIndex = 0; // Go to start of line
+                                  }
+                              } else targetVisualPos.visualColIndex = 0;
 
-                               //targetVisualPos.visualColIndex = this.cursor._col_hint; // Simpler way using hint directly
+                              //targetVisualPos.visualColIndex = this.cursor._col_hint; // Simpler way using hint directly
                               break;
                           case "ArrowDown":
                               const totalLines = this.getTotalVisualLines();
                               targetVisualPos.visualLineIndex = Math.min(totalLines - 1, targetVisualPos.visualLineIndex + 1);
-                               // Map hint column to visual column on the target line
-                               const downTargetLogical = this.mapVisualToLogical(targetVisualPos.visualLineIndex, this.cursor._col_hint);
-                                if (downTargetLogical) {
-                                    const downTargetVisual = this.mapLogicalToVisual(downTargetLogical.logicalRow, downTargetLogical.logicalCol);
-                                     if (downTargetVisual && downTargetVisual.visualLineIndex === targetVisualPos.visualLineIndex) {
-                                        targetVisualPos.visualColIndex = downTargetVisual.visualColIndex;
-                                    } else { // Fallback
-                                         targetVisualPos.visualColIndex = 0;
-                                    }
-                                } else targetVisualPos.visualColIndex = 0;
-                               //targetVisualPos.visualColIndex = this.cursor._col_hint; // Simpler way using hint directly
+                              // Map hint column to visual column on the target line
+                              const downTargetLogical = this.mapVisualToLogical(targetVisualPos.visualLineIndex, this.cursor._col_hint);
+                              if (downTargetLogical) {
+                                  const downTargetVisual = this.mapLogicalToVisual(downTargetLogical.logicalRow, downTargetLogical.logicalCol);
+                                  if (downTargetVisual && downTargetVisual.visualLineIndex === targetVisualPos.visualLineIndex) {
+                                     targetVisualPos.visualColIndex = downTargetVisual.visualColIndex;
+                                  } else { // Fallback
+                                      targetVisualPos.visualColIndex = 0;
+                                  }
+                              } else targetVisualPos.visualColIndex = 0;
+                              //targetVisualPos.visualColIndex = this.cursor._col_hint; // Simpler way using hint directly
                               break;
                      }
                        // If navigation happened, calculate the target logical position
