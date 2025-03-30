@@ -986,7 +986,7 @@ function initializeSystem() {
         },
         { label: "Random widget", callback: createRandomTWidget }
     ];
-    const menuWidth = 20;
+    const menuWidth = 21;
     const menuHeight = menuItems.length + 2;
     menuWidget = new TMenuWidget(2, 2, menuWidth, menuHeight, "Main Menu", menuItems, true); // Pinned main menu
     tWidgets.push(menuWidget);
