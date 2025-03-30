@@ -9,7 +9,7 @@ const MIN_WINDOW_HEIGHT_chars = 5;
 const STATUS_WINDOW_HEIGHT_chars = 3;
 
 // Clock widget constants
-const CLOCK_HEIGHT_chars = 12;
+const CLOCK_HEIGHT_chars = 14;
 const CLOCK_WIDTH_chars = Math.round(CLOCK_HEIGHT_chars * Y_TO_X_CHARS_DIMENSIONS_RATIO);
 const CLOCK_UPDATE_INTERVAL_ms = 1000;
 
