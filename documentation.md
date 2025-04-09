@@ -2,13 +2,11 @@
 
 ## Introduction
 
-This document describes the inner workings of the simple ASCII-based desktop environment built using HTML, CSS, and JavaScript. This system simulates a graphical desktop environment within a web browser, rendering widgets using text characters in a fixed-width grid. It features movable, resizable widgets like a text editor, a clock, a text viewer, a status bar, and a menu system.
+The ASCII desktop environment is built using HTML, CSS, and JavaScript. It simulates a graphical desktop environment within a web browser, rendering widgets using text characters in a fixed-width grid. It features movable, resizable widgets like a text editor, a clock, a text viewer, a status bar, and a menu system.
 
-## High-Level Interaction Loop
+## Initialization
 
-The system operates on an event-driven model combined with interval-based updates for specific widgets (like the clock).
-
-1.  **Initialization (`initializeSystem` in `js/desktop.js`):**
+**Initialization (`initializeSystem` in `js/desktop.js`):**
     *   The `main.js` script calls `initializeSystem()` once the page is ready.
     *   It identifies the main `#characters-grid` HTML element.
     *   It measures the pixel dimensions of a single character based on the applied CSS font style (`measureMonospaceFontDimensions`).
@@ -17,7 +15,13 @@ The system operates on an event-driven model combined with interval-based update
     *   It attaches event listeners (`mousedown`, `mousemove`, `mouseup`, `wheel`, `keydown`, `resize`) to the appropriate DOM elements (mostly the grid or the window).
     *   It performs the first full render by calling `drawTWidgets()`.
 
-2.  **Event Handling (User Input):**
+
+## High-Level Interaction Loop
+
+The system operates on an event-driven model combined with interval-based updates for specific widgets (like the clock).
+
+
+1.  **Event Handling (User Input):**
     *   The system waits for user interactions (mouse clicks, keyboard presses, window resizing).
     *   Relevant event handlers in `desktop.js` (`handleMouseDown`, `handleKeyDown`, `handleResize`, etc.) are triggered.
     *   These handlers determine the context of the event (e.g., which widget was clicked, which key was pressed, new window size).
@@ -28,14 +32,14 @@ The system operates on an event-driven model combined with interval-based update
         *   Widget-specific content (e.g., text in `TEditorWidget`).
     *   After processing the event and updating the state, the handler typically calls `drawTWidgets()` to reflect the changes visually.
 
-3.  **Interval Updates (Clock):**
+2.  **Interval Updates (Clock):**
     *   When the first `TClockWidget` is created, a `setInterval` timer (`clockUpdateInterval`) is started (`createClock` in `desktop.js`).
     *   This timer periodically calls the `updateClocks` function.
     *   `updateClocks` iterates through all widgets in `tWidgets`, finds any `TClockWidget` instances, and calls their `update()` method.
     *   The clock widget's `update()` method gets the current time and stores it internally.
     *   If any clock widget was updated, `updateClocks` calls `drawTWidgets()` to refresh the display.
 
-4.  **Rendering (`drawTWidgets` in `js/desktop.js`):**
+3.  **Rendering (`drawTWidgets` in `js/desktop.js`):**
     *   This function is the core of the visual update process.
     *   It creates a new, blank 2D array (`characterGrid`) representing the entire character grid. Each cell in this array is initialized as a `Cell` object (`js/utils/Cell.js`) containing a space character.
     *   It iterates through the `tWidgets` array. The order of widgets in this array determines their Z-index (widgets later in the array are drawn on top).
