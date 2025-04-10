@@ -1,8 +1,9 @@
-# ASCII Desktop System Documentation
+# Little Text Desktop - Documentation
 
 ## Introduction
 
-The ASCII desktop environment is built using HTML, CSS, and JavaScript. It simulates a graphical desktop environment within a web browser, rendering widgets using text characters in a fixed-width grid. It features movable, resizable widgets like a text editor, a clock, a text viewer, a status bar, and a menu system.
+Little Text Desktop is a graphical desktop environment within a web browser, rendering widgets using text characters in a fixed-width grid. It features movable, resizable widgets like a text editor, a clock, a text viewer, a status bar, and a menu system.
+It implements retained mode rendering, event handling, widget abstraction, scrolling, and basic window management within a constrained, character-grid environment.
 
 ## Initialization
 
@@ -95,7 +96,7 @@ The event system translates low-level DOM events into actions within the desktop
     *   `handleMouseMove` checks the `interactionState` and performs the corresponding action (e.g., updating widget position for drag, extending selection for editor) by calling helper functions (`handleWidgetDragMove`, `widget.extendSelection`, etc.).
     *   `handleMouseUp` checks the `interactionState` to finalize the action (e.g., calling `widget.click()` if it was a simple click) and resets the state using `interactionState.endInteraction()`.
 
-### Example Event Flow: Mouse Click & Drag
+### Example Flow 1: Mouse Click & Drag
 
 1.  **User Action:** Presses the mouse button down over a widget's title bar.
 2.  **DOM Event:** `mousedown` event fires.
@@ -119,7 +120,7 @@ The event system translates low-level DOM events into actions within the desktop
 20. **Finalization:** Calls `endActiveInteraction()`, which hides the status message and sets `interactionState.isPressed = false`.
 21. **Redraw:** `handleMouseUp` calls `drawTWidgets()` to show the widget in its final dragged position.
 
-### Example Event Flow: Keyboard Input (Editor)
+### Example Flow 2: Keyboard Input Events (Editor)
 
 1.  **User Action:** Clicks inside a `TEditorWidget` to give it focus, then presses the 'A' key.
 2.  **Focus:** The `mousedown` handler calls `bringToFrontAndFocus()`, setting the editor as `activeWidget`.
@@ -141,7 +142,7 @@ The event system translates low-level DOM events into actions within the desktop
     *   It returns `true` because it handled the key.
 9.  **Finalization:** `handleKeyDown` receives `true`, so it calls `event.preventDefault()` to stop the browser from also processing the 'A' key press.
 
-## Interval Updates (Clock)
+### Example Flow 3: Interval Updates (Clock)
 
 Widgets requiring periodic updates independent of user input use JavaScript's `setInterval`.
 
@@ -169,9 +170,9 @@ The system ensures a consistent representation of the desktop state by redrawing
 *   **Output (`emitHTML`):** After all widgets have drawn onto the grid, `emitHTML` iterates through the `characterGrid`, calls `toString()` on each `Cell`, concatenates the results into a single large string (preserving line breaks for the `<pre>` nature of the container), and sets the `innerHTML` of the `#characters-grid` div.
 *   **Consistency:** Because the entire grid is rebuilt from the state stored in the widgets (`tWidgets` array) on every relevant change (event, interval), the display is always consistent with the underlying application state.
 
-### Immediate vs. Retained Mode
+## Retained Mode
 
-This system is an example of **Retained Mode**.
+This system follows the **Retained Mode** (as opposed to Immediate Mode).
 
 *   The application explicitly **retains** data structures representing the UI elements and their state (the `tWidgets` array and the properties within each widget object).
 *   The `drawTWidgets` function acts as the rendering loop, traversing this retained data structure to draw the scene.
@@ -235,7 +236,7 @@ This system is an example of **Retained Mode**.
 ### `TEditorWidget` (`js/widgets/editor/TEditorWidget.js`)
 
 *   **Purpose:** Provides a scrollable, multi-line text editing area.
-*   **Characteristics:** The most complex widget. Inherits `TScrollableWidget`. Supports text manipulation, cursor movement, selection, clipboard operations (cut/copy/paste), optional word wrap, and cursor blinking.
+*   **Characteristics:** The most complex widget, showcases more complex state management. Inherits `TScrollableWidget`. Supports text manipulation, cursor movement, selection, clipboard operations (cut/copy/paste), optional word wrap, and cursor blinking.
 *   **Key Internal Components:**
     *   `EditorBuffer`: Stores the text content as an array of strings (`lines`). Provides methods like `insert`, `delete`, `split`, `getLine`.
     *   `EditorCursor`: Stores the logical cursor position (`row`, `col`) and a `col_hint` (used to maintain horizontal position when moving vertically across lines of different lengths). Provides methods like `up`, `down`, `left`, `right`.
@@ -289,7 +290,3 @@ Beyond the specifics implemented here, general topics relevant to interactive/de
 *   **Persistence:** Saving the state of the desktop (widget positions, content) and restoring it later.
 *   **Inter-Widget Communication:** Mechanisms for widgets to interact with each other (e.g., drag-and-drop text between editors, signals/events).
 *   **Asynchronous Operations:** Handling operations that take time without blocking the UI thread (e.g., loading large files into an editor).
-
-## Conclusion
-
-This ASCII Desktop system provides a functional, albeit simple, simulation of a graphical environment using text characters. It demonstrates key concepts like retained mode rendering, event handling, widget abstraction, scrolling, and basic window management within a constrained, character-grid environment. The `TEditorWidget` showcases more complex state management involving coordinate mapping for features like word wrap.
